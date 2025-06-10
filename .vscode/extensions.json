@@ -1,6 +1,3 @@
 {
-	"recommendations": [
-		"biomejs.biome",
-		"bierner.comment-tagged-templates"
-	]
+	"recommendations": ["biomejs.biome", "bierner.comment-tagged-templates"]
 }

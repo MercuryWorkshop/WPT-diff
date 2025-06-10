@@ -1,5 +1,5 @@
-import { chromium } from "playwright";
 import fs from "node:fs/promises";
+import { chromium } from "playwright";
 import { type WPTTestResult, WPTTestStatus } from "../types/index.d.ts";
 
 const BASE_URL = "https://wpt.live";
@@ -44,22 +44,20 @@ export const startTest = async (options: {
 		} else console.log("[Browser Console]", msg.text());
 	});
 
-	let testResults = new Map<string, WPTTestResult[]>();
+	const testResults = new Map<string, WPTTestResult[]>();
 
-	await page.exposeFunction(
-		"collectWPTResults",
-		(tests, harness_status) =>
-			testResults.set(
-				`${page.url}`,
-				tests.map((test) => {
-					return {
-						name: test.name,
-						status: test.status,
-						message: test.message,
-						stack: test.stack,
-					};
-				}),
-			),
+	await page.exposeFunction("collectWPTResults", (tests, harness_status) =>
+		testResults.set(
+			`${page.url}`,
+			tests.map((test) => {
+				return {
+					name: test.name,
+					status: test.status,
+					message: test.message,
+					stack: test.stack,
+				};
+			}),
+		),
 	);
 
 	page.route(`${BASE_URL}/resources/testharness.js`, async (route) => {
@@ -79,9 +77,7 @@ export const startTest = async (options: {
 
 	if (!options.silent) {
 		console.log(
-			`Running ${testPaths.length} test${
-				testPaths.length === 1 ? "" : "s"
-			}`,
+			`Running ${testPaths.length} test${testPaths.length === 1 ? "" : "s"}`,
 		);
 	}
 
@@ -97,10 +93,7 @@ export const startTest = async (options: {
 			await page.waitForLoadState("load");
 		} catch (error) {
 			if (!options.silent) {
-				console.error(
-					`Error running test ${testPaths[i].test}:`,
-					error,
-				);
+				console.error(`Error running test ${testPaths[i].test}:`, error);
 			}
 		}
 

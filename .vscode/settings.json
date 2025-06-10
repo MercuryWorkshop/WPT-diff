@@ -9,12 +9,8 @@
 	},
 	"tabnine.codeLensEnabled": false,
 	"tabnine.experimentalAutoImports": null,
-	"tabnine.disableFileRegex": [
-		".*"
-	],
-	"tabnine.disableLineRegex": [
-		".*"
-	],
+	"tabnine.disableFileRegex": [".*"],
+	"tabnine.disableLineRegex": [".*"],
 	"cody.autocomplete.completeSuggestWidgetSelection": false,
 	"cody.autocomplete.disableInsideComments": false,
 	"cody.commandHints.enabled": false,
