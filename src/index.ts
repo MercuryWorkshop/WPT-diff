@@ -1,106 +1,128 @@
-import { chromium } from 'playwright';
-import fs from "node:fs/promises"
-interface WPTTestResult {
-    name: string;
-    status: number;
-    message?: string;
-    stack?: string;
-}
+import { chromium } from "playwright";
+import fs from "node:fs/promises";
+import { type WPTTestResult, WPTTestStatus } from "../types/index.d.ts";
 
-enum Status {
-    PASS = 0,
-    FAIL = 1,
-    TIMEOUT = 2,
-    NOTRUN = 3,
-    OPTIONALFEATURE_UNSUPPORTED = 4
-}
+const BASE_URL = "https://wpt.live";
 
-const TEST_PATHS = [
-    'dom/nodes/Element-tagName.html',
-    'dom/nodes/Element-matches.html'
-];
-
-const BASE_URL = 'https://wpt.live/';
-
-const STATUS_CODES = {
-    0: "Pass",
-    1: "Fail",
-    2: "Timeout",
-    3: "Not Run",
-    4: "Optional Feature Unsupported"
+const _STATUS_CODES = {
+	0: "Pass",
+	1: "Fail",
+	2: "Timeout",
+	3: "Not Run",
+	4: "Optional Feature Unsupported",
 } as const;
 
-(async () => {
-    const browser = await chromium.launch({
-        headless: false,
-    });
+export const startTest = async (options: {
+	headless?: boolean;
+	maxTests?: number;
+	silent?: boolean;
+}) => {
+	const latestChrome = await fetch(
+		`${BASE_URL}/api/run?label=master&label=stable&product=chrome&aligned`,
+	);
+	const chromeData = await latestChrome.json();
+	const chromeReport = await fetch(chromeData.raw_results_url);
+	const reportData = await chromeReport.json();
+	let testPaths: {
+		test: string;
+	}[] = reportData.results;
 
-    const page = await browser.newPage();
-    page.route("https://wpt.live/resources/testharness.js", async (r) => {
-        const text = await fs.readFile("src/testharness.js", "utf8")
-        await r.fulfill({
-            status: 200,
-            contentType: "text/javascript",
-            body: text
-        })
+	if (options.maxTests) testPaths = testPaths.slice(0, options.maxTests);
 
-    })
-    page.on('console', (msg) => {
-        const text = msg.text();
-        if (msg.type() === 'error') {
-            console.log('Console error:', text);
-        } else {
-            console.log("Console: ", text)
-        }
-    });
+	const browser = await chromium.launch({
+		headless: options.headless ?? true,
+	});
 
-    let testResults = new Map<string, WPTTestResult[]>()
-    await page.exposeFunction('collectWPTResults', (url: string, tests: WPTTestResult[], harness_status: { message?: string; stack?: string; status: number }, asserts_run: any) => {
-        testResults.set(url, tests)
-    });
+	const page = await browser.newPage();
 
-    for (const testPath of TEST_PATHS) {
-        const fullUrl = BASE_URL + testPath;
-        console.log(`\nRunning: ${testPath}`);
+	// Log propagation
+	page.on("console", (msg) => {
+		if (options.silent) return;
 
+		if (console[msg.type()]) {
+			console[msg.type()]("[Browser Console]", msg.text());
+		} else console.log("[Browser Console]", msg.text());
+	});
 
-        try {
-            await page.goto(fullUrl, {
-                waitUntil: "domcontentloaded"
-            });
+	let testResults = new Map<string, WPTTestResult[]>();
 
-            await page.waitForSelector("table#results")
+	await page.exposeFunction(
+		"collectWPTResults",
+		(tests, harness_status) =>
+			testResults.set(
+				`${page.url}`,
+				tests.map((test) => {
+					return {
+						name: test.name,
+						status: test.status,
+						message: test.message,
+						stack: test.stack,
+					};
+				}),
+			),
+	);
 
-        } catch (error) {
-            console.error(`Error running test ${testPath}:`, error);
+	page.route(`${BASE_URL}/resources/testharness.js`, async (route) => {
+		const resp = await route.fetch();
+		let body = await resp.text();
 
-        }
-    }
+		body += /* js */ `
+            add_completion_callback(collectWPTResults);
+        `;
 
-    await page.waitForTimeout(100);
+		await route.fulfill({
+			body: body,
+			contentType: "text/javascript",
+			status: 200,
+		});
+	});
 
+	if (!options.silent) {
+		console.log(
+			`Running ${testPaths.length} test${
+				testPaths.length === 1 ? "" : "s"
+			}`,
+		);
+	}
 
-    // TODO: todooooooooooooooooooooooooooooooooooooooo
-    let TotalPass = 0;
-    let TotalFail = 0;
-    let TotalOther = 0;
-    for await (const [k, v] of testResults) {
-        for (const test of v) {
-            if (test.status === Status.PASS) {
-                TotalPass++;
-            } else if (test.status === Status.FAIL) {
-                TotalFail++;
-            } else {
-                TotalOther++
-            }
-        }
+	for (let i = 0; i < testPaths.length; i++) {
+		const fullUrl = BASE_URL + testPaths[i].test;
+		if (!options.silent) console.log(`Running: ${testPaths[i].test}`);
 
+		try {
+			await page.goto(fullUrl, {
+				waitUntil: "commit",
+			});
 
-    }
+			await page.waitForLoadState("load");
+		} catch (error) {
+			if (!options.silent) {
+				console.error(
+					`Error running test ${testPaths[i].test}:`,
+					error,
+				);
+			}
+		}
 
-    await browser.close()
-    console.log('\n🏁 Test run completed');
-    console.log(`Total Passed Tests: ${TotalPass}`);
-    console.log(`Total Failed Tests: ${TotalFail}`);
-    console.log(`Other Test results: ${TotalOther}`);
-})().catch(console.error);
+		if (i > 30) break;
+	}
+
+	let TotalPass = 0;
+	let TotalFail = 0;
+	let TotalOther = 0;
+
+	for await (const [k, v] of testResults) {
+		for (const test of v) {
+			if (test.status === WPTTestStatus.PASS) TotalPass++;
+			else if (test.status === WPTTestStatus.FAIL) TotalFail++;
+			else TotalOther++;
+		}
+	}
+
+	await browser.close();
+
+	console.log("\nTest run completed");
+	console.log(`Total Passed Tests: ${TotalPass}`);
+	console.log(`Total Failed Tests: ${TotalFail}`);
+	console.log(`Other Test results: ${TotalOther}`);
+};

@@ -42,7 +42,7 @@ jobs:
         if: steps.verify-changed-files.outputs.changed == 'true' && github.event_name == 'push'
         run: |
           git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-            commit -am "chore: auto-fix formatting and linting with Biome [skip ci]"
+            commit -am "chore: auto-fix formatting and linting with Biome"
 
       - name: "Push changes"
         if: steps.verify-changed-files.outputs.changed == 'true' && github.event_name == 'push'
