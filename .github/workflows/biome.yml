@@ -1,0 +1,55 @@
+name: "Biome Code Quality Assurance"
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  quality:
+    runs-on: "ubuntu-latest"
+
+    permissions:
+      contents: "write"
+
+    steps:
+      - name: "Checkout code"
+        uses: "actions/checkout@v4"
+        with:
+          token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: "Setup Biome"
+        uses: "biomejs/setup-biome@v2"
+        with:
+          version: "latest"
+
+      - name: "Fix issues with Biome Lint that are writable"
+        run: "biome check --write ."
+
+      - name: "Format with Biome"
+        run: "biome format --write ."
+
+      - name: "Check for changes"
+        id: "verify-changed-files"
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: "Commit changes"
+        if: steps.verify-changed-files.outputs.changed == 'true' && github.event_name == 'push'
+        run: |
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -am "chore: auto-fix formatting and linting with Biome [skip ci]"
+
+      - name: "Push changes"
+        if: steps.verify-changed-files.outputs.changed == 'true' && github.event_name == 'push'
+        uses: "ad-m/github-push-action@master"
+        with:
+          github_token: "${{ secrets.GITHUB_TOKEN }}"
+          branch: "${{ github.ref_name }}"
+
+      - name: "Biome CI check"
+        run: "biome ci ."

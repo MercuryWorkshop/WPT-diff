@@ -1,0 +1,7 @@
+{
+	"github.copilot.enable": {
+    	"*": false
+  	},
+	"editor.defaultFormatter": "biomejs.biome",
+	"notebook.defaultFormatter": "biomejs.biome"
+}
