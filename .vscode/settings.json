@@ -1,7 +1,23 @@
 {
-	"github.copilot.enable": {
-    	"*": false
-  	},
 	"editor.defaultFormatter": "biomejs.biome",
-	"notebook.defaultFormatter": "biomejs.biome"
+	"notebook.defaultFormatter": "biomejs.biome",
+	"[json]": {
+		"editor.defaultFormatter": "vscode.json-language-features"
+	},
+	"github.copilot.enable": {
+		"*": false
+	},
+	"tabnine.codeLensEnabled": false,
+	"tabnine.experimentalAutoImports": null,
+	"tabnine.disableFileRegex": [
+		".*"
+	],
+	"tabnine.disableLineRegex": [
+		".*"
+	],
+	"cody.autocomplete.completeSuggestWidgetSelection": false,
+	"cody.autocomplete.disableInsideComments": false,
+	"cody.commandHints.enabled": false,
+	"cody.chat.agenticContext": false,
+	"cody.rules.enabled": true
 }
