@@ -1,3 +1,6 @@
+/**
+ * This is for an individual test in the internal WPT-diff logic
+ */
 export interface WPTTestResult {
 	name: string;
 	status: number;
@@ -5,10 +8,11 @@ export interface WPTTestResult {
 	stack?: string;
 }
 
-export enum WPTTestStatus {
-	PASS = 0,
-	FAIL = 1,
-	TIMEOUT = 2,
-	NOTRUN = 3,
-	OPTIONALFEATURE_UNSUPPORTED = 4,
+/**
+ * These are the final results from WPT-diff
+ */
+export interface WPTDiffResults {
+	pass: number;
+	fail: number;
+	other: number;
 }

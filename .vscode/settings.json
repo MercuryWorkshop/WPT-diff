@@ -15,5 +15,8 @@
 	"cody.autocomplete.disableInsideComments": false,
 	"cody.commandHints.enabled": false,
 	"cody.chat.agenticContext": false,
-	"cody.rules.enabled": true
+	"cody.rules.enabled": true,
+	"[typescript]": {
+		"editor.defaultFormatter": "biomejs.biome"
+	}
 }

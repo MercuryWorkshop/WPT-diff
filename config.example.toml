@@ -1,0 +1,6 @@
+[wpt]
+max_tests = 30
+under_proxy = false
+[wpt.urls]
+tests_base_url = "https://wpt.live"
+api_base_url = "https://wpt.fyi"
