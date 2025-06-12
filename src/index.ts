@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/no-unsafe-function-type */
 /* eslint-disable no-await-in-loop */
 import {
+	ResultAsync,
 	errAsync as nErrAsync,
 	okAsync as nOkAsync,
-	ResultAsync,
 } from "neverthrow";
 
 import type log from "./logger";

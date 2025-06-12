@@ -4,9 +4,9 @@
  */
 
 import {
-	okAsync as nOkAsync,
-	errAsync as nErrAsync,
 	type ResultAsync,
+	errAsync as nErrAsync,
+	okAsync as nOkAsync,
 } from "neverthrow";
 
 import type { ConfigPaths } from "#types/config.d.ts";
@@ -15,7 +15,7 @@ import { parse } from "smol-toml";
 // import typia from "typia";
 import type { ParsedTomlConfig } from "#types/config.d.ts";
 
-import { readFile, copyFile, constants } from "node:fs/promises";
+import { constants, copyFile, readFile } from "node:fs/promises";
 
 export default async function loadConfig(
 	configPaths: ConfigPaths,

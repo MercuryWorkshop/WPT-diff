@@ -3,14 +3,14 @@ import { startTest } from "./index";
 
 import log from "./logger";
 
+import { config as dotenvConfig } from "dotenv";
 import type { ConfigPaths } from "#types/config.d.ts";
 import loadConfig from "./loadConfig";
-import { config as dotenvConfig } from "dotenv";
 
 const program = new Command();
 
-import { resolve } from "node:path";
 import { access } from "node:fs/promises";
+import { resolve } from "node:path";
 
 /**
  * The paths to the config files in the repo
