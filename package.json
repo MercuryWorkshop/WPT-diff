@@ -27,6 +27,9 @@
 		"typia": "^9.3.1"
 	},
 	"imports": {
-		"#types/*": "./types/*"
+		"#types/*": "./types/*",
+		"#page/*": "./src/page/*",
+		"#routeInterceptors/*": "./src/routeInterceptors/*",
+		"#util/*": "./src/util/*"
 	}
 }

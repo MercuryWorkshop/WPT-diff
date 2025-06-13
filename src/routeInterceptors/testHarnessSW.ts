@@ -1,0 +1,57 @@
+import type logger from "../logger";
+
+import type { Route } from "playwright";
+
+export default function createTestHarness(
+	bodyAddition: string,
+	log: typeof logger,
+	// biome-ignore lint/suspicious/noExplicitAny: This is how it is typed, directly from playwright
+): (route: Route, req: Request) => Promise<any> {
+	const testHarness = async (
+		route: Route,
+		_req: Request,
+		// biome-ignore lint/suspicious/noExplicitAny: This is how it is typed inside of playwright, so we will just go with it
+	): Promise<any> => {
+		log.debug("Attempting to intercept the test harness to rewrite it...");
+
+		const req = route.request();
+		const sw = req.serviceWorker();
+		if (sw) {
+			const reqUrl = req.url();
+			let rawDecodedUrl: string;
+			try {
+				rawDecodedUrl = self.$scramjet?.codec?.decode(reqUrl);
+			} catch (err) {
+				throw new Error(
+					`[WPT-diff SW] Failed to decode a URL inside of the SW while trying to intercept the test harness: ${err}`,
+				);
+			}
+			let decodedUrl: URL;
+			try {
+				decodedUrl = new URL(rawDecodedUrl);
+			} catch (err) {
+				throw new Error(
+					`Failed to decode the raw decoded url ${rawDecodedUrl} from Scramjet's config decode method: ${err}`,
+				);
+			}
+			if (decodedUrl.pathname.startsWith("/resources/testharness.js")) {
+				log.info("[WPT-diff SW] Intercepted the test harness ", decodedUrl);
+
+				const resp = await route.fetch();
+				const body = await resp.text();
+
+				await route.fulfill({
+					body: body + bodyAddition,
+					contentType: "text/javascript",
+					status: 200,
+				});
+			}
+		}
+	};
+
+	return testHarness;
+}
+
+export async function shouldRoute(url: URL): Promise<boolean> {
+	return url.href.startsWith("http://localhost:1337/scramjet/");
+}

@@ -5,7 +5,7 @@ import log from "./logger";
 
 import { config as dotenvConfig } from "dotenv";
 import type { ConfigPaths } from "#types/config.d.ts";
-import loadConfig from "./loadConfig";
+import loadConfig from "./util/loadConfig";
 
 const program = new Command();
 
