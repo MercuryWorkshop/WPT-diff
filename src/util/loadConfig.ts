@@ -12,7 +12,7 @@ import {
 import type { ConfigPaths } from "#types/config.d.ts";
 
 import { parse } from "smol-toml";
-// import typia from "typia";
+import typia from "typia";
 import type { ParsedTomlConfig } from "#types/config.d.ts";
 
 import { constants, copyFile, readFile } from "node:fs/promises";
@@ -20,7 +20,7 @@ import { constants, copyFile, readFile } from "node:fs/promises";
 export default async function loadConfig(
 	configPaths: ConfigPaths,
 ): Promise<ResultAsync<ParsedTomlConfig, string>> {
-	// Create a `config.yaml` if one doesn't already exist by using the example config
+	// Create a config.yaml if one doesn't already exist by using the example config
 	try {
 		await copyFile(
 			configPaths.example,
@@ -32,18 +32,17 @@ export default async function loadConfig(
 	const rawToml = await readFile(configPaths.main, "utf-8");
 	const parsedToml = parse(rawToml);
 
-	// FIXME: Fix the runtime validation
-	/*
 	const configValidationRes = typia.validate<ParsedTomlConfig>(parsedToml);
-	if (!configValidationRes.success)
+	if (!configValidationRes.success) {
+		const err = configValidationRes.errors
+			.map((err) => `${err.path}: ${err.expected} but got ${err.value}`)
+			.join(", ");
+
 		return nErrAsync(
-			`Failed to validate the 'config.toml' that you provided: ${configValidationRes.errors}`,
+			`Failed to validate the 'config.toml' that you provided: ${err}`,
 		);
+	}
 	const toml = configValidationRes.data;
 
 	return nOkAsync(toml);
-	*/
-
-	// @ts-ignore
-	return nOkAsync(parsedToml);
 }

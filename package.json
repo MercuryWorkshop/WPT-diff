@@ -1,35 +1,42 @@
 {
-	"name": "wpt",
-	"version": "1.0.0",
-	"description": "",
-	"main": "index.js",
-	"type": "module",
-	"scripts": {
-		"start": "tsx src/cli.ts",
-		"dev": "tsx --watch src/cli.ts",
-		"fmt": "biome format --write ."
-	},
-	"keywords": [],
-	"author": "",
-	"license": "ISC",
-	"devDependencies": {
-		"@types/node": "^24.0.0",
-		"tsx": "^4.19.4"
-	},
-	"dependencies": {
-		"chalk": "^5.4.1",
-		"commander": "^14.0.0",
-		"console-with-style": "^1.1.0",
-		"dotenv": "^16.5.0",
-		"neverthrow": "^8.2.0",
-		"playwright": "^1.53.0",
-		"smol-toml": "^1.3.4",
-		"typia": "^9.3.1"
-	},
-	"imports": {
-		"#types/*": "./types/*",
-		"#page/*": "./src/page/*",
-		"#routeInterceptors/*": "./src/routeInterceptors/*",
-		"#util/*": "./src/util/*"
-	}
+  "name": "wpt",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "tsx src/cli.ts",
+    "dev": "tsx --watch src/cli.ts",
+    "fmt": "biome format --write .",
+    "prepare": "ts-patch install",
+    "generate:validators": "typia generate --input src/util/validators --output src/util/generated"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/supports-color": "^10.0.0",
+    "ts-node": "^10.9.2",
+    "ts-patch": "^3.3.0",
+    "tsx": "^4.19.4",
+    "typescript": "~5.8.3"
+  },
+  "dependencies": {
+    "chalk": "^5.4.1",
+    "commander": "^14.0.0",
+    "console-with-style": "^1.1.0",
+    "dotenv": "^16.5.0",
+    "neverthrow": "^8.2.0",
+    "playwright": "^1.53.0",
+    "smol-toml": "^1.3.4",
+    "typia": "^9.3.1"
+  },
+  "imports": {
+    "#types/*": "./types/*",
+    "#page/*": "./src/page/*",
+    "#routeInterceptors/*": "./src/routeInterceptors/*",
+    "#util/*": "./src/util/*"
+  }
 }

@@ -1,4 +1,5 @@
 export interface ParsedTomlConfig {
+	promise_timeout: number;
 	wpt: {
 		urls: {
 			tests_base_url: string;

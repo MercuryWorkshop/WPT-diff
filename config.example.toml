@@ -1,6 +1,10 @@
+ßpromise_timeout=15
+
 [wpt]
 max_tests = 30
-under_proxy = false
+# You would only disable this for testing the runner to determine if an issue is related to the SW proxy or the runner itself
+under_proxy = true
+
 [wpt.urls]
 tests_base_url = "https://wpt.live"
 api_base_url = "https://wpt.fyi"

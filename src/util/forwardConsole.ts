@@ -1,6 +1,29 @@
-import { Logger, Page } from "playwright";
+import type logger from "../logger.ts"
 
-export default function forwardConsole(page: Page, log: Logger) {
+import type { TestOptions } from "../../types/test.d.ts"
+
+import { Page } from "playwright";
+
+
+// For propagating colored logs from the page
+// @ts-ignore: This module is not typed
+import supportsColor from "supports-color";
+// @ts-ignore: This module is not typed
+import createFormatter from "console-with-style";
+
+// @ts-ignore: This library is typed wrong
+const level = supportsColor.stdout?.level || 0;
+const formatWithColor = createFormatter(level);
+
+interface Passthrough {
+    page: Page;
+    options: TestOptions;
+    log: typeof logger;
+}
+
+export default function forwardConsole(passthrough: Passthrough) {
+    const { page, options, log } = passthrough;
+
 	page.on("console", async (msg) => {
 		const msgText = msg.text();
 		const pageUrl = msg.location().url;
@@ -21,9 +44,26 @@ export default function forwardConsole(page: Page, log: Logger) {
 			const prefix = options.underProxy
 				? "[Iframe Console]"
 				: "[Browser Console]";
-			// FIXME: console.log(formatWithColor(msgText));
-			if (log[msg.type()]) log[msg.type()](prefix, msgText);
-			else log.info(prefix, msgText);
+
+            let formattedWithColor: string;
+            try {
+                formattedWithColor = formatWithColor(msgText);
+            } catch {
+                formattedWithColor = msgText;
+            }
+
+            const msgType = msg.type();
+			switch (msgType) {
+                case "log":
+                case "info":
+                    log.info(prefix, formattedWithColor);
+                    break;
+                case "debug":
+                    log.debug(prefix, formattedWithColor);
+                    break;
+                case "warning":
+                    log.warn(prefix, formattedWithColor);
+			}
 		}
 	});
 }

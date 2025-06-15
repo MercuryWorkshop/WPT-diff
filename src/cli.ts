@@ -1,4 +1,6 @@
 import { Command } from "commander";
+
+import { setupPage } from "../../tests/util/setupPage.ts";
 import { startTest } from "./index";
 
 import log from "./logger";
@@ -74,6 +76,7 @@ const startTestRes = await startTest({
 	maxTests: config.wpt.max_tests,
 	silent: !verboseMode,
 	underProxy: config.wpt.under_proxy,
+	setupPage,
 });
 if (startTestRes.isErr())
 	throw new Error(`Failed to run WPT-diff: ${startTestRes.error}`);

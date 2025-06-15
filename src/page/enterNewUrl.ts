@@ -3,11 +3,11 @@ import type logger from "../logger.ts";
 import type { Page } from "playwright";
 
 export async function enterNewUrl(pass: {
-	log: typeof logger;
 	page: Page;
 	url: string;
+	log: typeof logger;
 }): Promise<void> {
-	const { log, page, url } = pass;
+	const { page, url, log } = pass;
 
 	log.info(
 		`Attempting to navigate to ${url} in the proxy frame through the URL bar`,

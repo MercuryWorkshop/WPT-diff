@@ -1,0 +1,34 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "ES2022",
+		"lib": ["ES2022"],
+		"moduleResolution": "node",
+		"allowImportingTsExtensions": true,
+		"noEmit": true,
+		"strict": true,
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"resolveJsonModule": true,
+		"types": ["node"],
+		"paths": {
+			"#types/*": ["./types/*"],
+			"#page/*": ["./src/page/*"],
+			"#routeInterceptors/*": ["./src/routeInterceptors/*"],
+			"#util/*": ["./src/util/*"]
+		},
+		"plugins": [
+			{
+				"transform": "typia/lib/transform"
+			}
+		]
+	},
+	"include": ["src/**/*", "types/**/*", "../src/types.d.ts"],
+	"exclude": ["node_modules"],
+	"ts-node": {
+		"esm": true,
+		"transpileOnly": false,
+		"compiler": "typescript-transform"
+	}
+}

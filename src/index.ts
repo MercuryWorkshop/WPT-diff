@@ -6,27 +6,20 @@ import {
 	okAsync as nOkAsync,
 } from "neverthrow";
 
-import type log from "./logger";
-
 import { chromium } from "playwright";
 import type { WPTDiffResults, WPTTestResult } from "#types/index.d.ts";
 import { WPTTestStatus } from "#types/wpt.ts";
 import forwardConsole from "#util/forwardConsole.ts";
-import createTestIterator from "#util/testIterator";
-// For propagating colored logs from the page
-//import supportsColor from "supports-color";
-//import createFormatter from "console-with-style";
-
-// @ts-ignore: This library is typed wrong
-//const level = supportsColor.stdout?.level || 0;
-//const formatWithColor = createFormatter(level);
+import createTestIterator from "#util/testIterator.ts";
 
 // Route Interceptors
-import createTestHarness from "./routeInterceptors/testHarness";
+import createTestHarness from "./routeInterceptors/testHarness.ts";
 
-import WptCollector from "./page/wptCollector";
-import { enterNewUrl } from "./page/enterNewUrl";
-import setupFirstTime from "./page/setupFirstTime";
+import WptCollector from "./page/wptCollector.ts";
+import { enterNewUrl } from "./page/enterNewUrl.ts";
+import setupFirstTime from "./page/setupFirstTimeSW.ts";
+
+import type { TestOptions } from "#types/test.d.ts";
 
 /**
  * Starts the test for WPT-diff
@@ -34,60 +27,64 @@ import setupFirstTime from "./page/setupFirstTime";
  * @param maxTests The max number of tests to execute
  * @param silent Enables verbose logging
  */
-export async function startTest(options: {
-	logger: typeof log;
-	wptUrls: {
-		test: string;
-		api: string;
-	};
-	// biome-ignore lint/complexity/noBannedTypes: I will elaborate later leave me alone
-	setupPage: Function;
-	headless?: boolean;
-	maxTests?: number;
-	silent?: boolean;
-	underProxy?: boolean;
-}): Promise<
-	ResultAsync<
-		{
-			results: WPTDiffResults;
-		},
-		string
-	>
+export async function startTest(options: TestOptions): Promise<
+    ResultAsync<
+        {
+            results: WPTDiffResults;
+        },
+        string
+    >
 > {
-	const { logger: log } = options;
+    const { logger: log } = options;
 
-	const getRunsApiEndpoint = `${options.wptUrls.api}/api/run?label=master&label=stable&product=chrome&aligned`;
-	const latestChromeRespRes = await ResultAsync.fromPromise(
-		fetch(getRunsApiEndpoint),
-		(err) =>
-			`Failed to fetch the current WPT Results from the latest Chrome on Linux run from the WPT API (${options.wptUrls.api}): ${err}`,
-	);
-	if (latestChromeRespRes.isErr()) return nErrAsync(latestChromeRespRes.error);
-	const latestChrome = latestChromeRespRes.value;
+    const getRunsApiEndpoint = `${options.wptUrls.api}/api/run?label=master&label=stable&product=chrome&aligned`;
+    const latestChromeRespRes = await ResultAsync.fromPromise(
+        fetch(getRunsApiEndpoint),
+        (err) =>
+            `Failed to fetch the current WPT Results from the latest Chrome on Linux run from the WPT API ${options.wptUrls.api}: ${err}`
+    );
+    if (latestChromeRespRes.isErr()) return nErrAsync(latestChromeRespRes.error);
+    const latestChrome = latestChromeRespRes.value;
 
-	const chromeData = await latestChrome.json();
-	const chromeReport = await fetch(chromeData.raw_results_url);
-	const chromeReportRes = await ResultAsync.fromPromise(
-		fetch(chromeData.raw_results_url),
-		(err) =>
-			`Failed to fetch the WPT Report from the latest Chrome on Linux WPT Results run from the WPT API (${chromeData.raw_results_url}): ${err}`,
-	);
-	if (chromeReportRes.isErr()) return nErrAsync(chromeReportRes.error);
-	const reportData = await chromeReport.json();
-	let testPaths: {
-		test: string;
-	}[] = reportData.results;
+    let chromeData: any;
+    try {
+        chromeData = await latestChrome.json();
+    } catch (err) {
+        return nErrAsync(`Failed to parse the WPT Results as JSON: ${err}`);
+    }
+    if ("raw_results_url" in chromeData)
+        return nErrAsync("Failed to find the raw results URL as expected for the latest Chrome results");
+    const chromeReportRes = await ResultAsync.fromPromise(
+        fetch(chromeData.raw_results_url),
+        (err) =>
+            `Failed to get the fetch the raw results URL found in the latest Chrome Linux run ${chromeData.raw_results_url}: ${err}`,
+    );
+    if (chromeReportRes.isErr()) return nErrAsync(chromeReportRes.error);
+    const chromeReport = chromeReportRes.value;
+    let reportData: any;
+    try {
+        reportData = await chromeReport.json();
+    } catch (err) {
+        return nErrAsync(`Failed to parse the WPT Report for the latest Chrome Linux run: ${err}`)
+    }
+    let testPaths: {
+        test: string;
+    }[] = reportData.results;
 
-	if (options.maxTests) testPaths = testPaths.slice(0, options.maxTests);
+    if (options.maxTests) testPaths = testPaths.slice(0, options.maxTests);
 
-	const browser = await chromium.launch({
-		headless: false /*options.headless || false*/,
-	});
+    const browser = await chromium.launch({
+        headless: options.headless || false,
+    });
 
-	const browserContext = await browser.newContext();
-	const page = await browserContext.newPage();
+    const browserContext = await browser.newContext();
+    const page = await browserContext.newPage();
 
-	forwardConsole(page, log);
+    forwardConsole({
+        page,
+        log,
+        options
+    });
 
 	// Collect the results
 	const testResults = new Map<string, WPTTestResult[]>();
@@ -139,8 +136,6 @@ export async function startTest(options: {
 
 			if (options.underProxy) {
 				if (!proxySetup) {
-					console.log(options);
-					console.log(setupPage);
 					await setupFirstTime({
 						log,
 						wptCollector,
@@ -149,14 +144,16 @@ export async function startTest(options: {
 						page,
 						url: rawFullUrl,
 					});
-					proxySetup = true;
-				} else
-					await enterNewUrl({
-						log,
-						page,
-						url: rawFullUrl,
-					});
-			} else
+				}
+				proxySetup = true;
+				await enterNewUrl({
+					log,
+					page,
+					url: rawFullUrl,
+				});
+			}
+			// Go to the site directly if there is no proxy, since there is no need to
+			else
 				await page.goto(rawFullUrl, {
 					waitUntil: "commit",
 				});

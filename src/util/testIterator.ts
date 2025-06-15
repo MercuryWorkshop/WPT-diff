@@ -13,6 +13,7 @@ export interface TestIteratorOptions {
 
 export default function* createTestIterator(options: TestIteratorOptions) {
 	const { testPaths, maxTests = 30 } = options;
+
 	let actualMaxTests = maxTests;
 	let testsProcessed = 0;
 

@@ -1,12 +1,17 @@
 import type logger from "../logger";
 
-import type { Route } from "playwright";
+import type { Route, Request } from "playwright";
 
 export default function createTestHarness(
-	bodyAddition: string,
-	log: typeof logger,
+	pass: {
+		underProxy: boolean;
+		bodyAddition: string;
+		log: typeof logger;
+	},
 	// biome-ignore lint/suspicious/noExplicitAny: This is how it is typed, directly from playwright
 ): (route: Route, req: Request) => Promise<any> {
+	const { bodyAddition, log } = pass;
+
 	const testHarness = async (
 		route: Route,
 		_req: Request,
@@ -20,7 +25,7 @@ export default function createTestHarness(
 			const reqUrl = req.url();
 			let rawDecodedUrl: string;
 			try {
-				rawDecodedUrl = self.$scramjet?.codec?.decode(reqUrl);
+				rawDecodedUrl = $scramjet?.codec?.decode(reqUrl);
 			} catch (err) {
 				throw new Error(
 					`[WPT-diff SW] Failed to decode a URL inside of the SW while trying to intercept the test harness: ${err}`,
@@ -52,6 +57,6 @@ export default function createTestHarness(
 	return testHarness;
 }
 
-export async function shouldRoute(url: URL): Promise<boolean> {
+export function shouldRoute(url: URL): boolean {
 	return url.href.startsWith("http://localhost:1337/scramjet/");
 }

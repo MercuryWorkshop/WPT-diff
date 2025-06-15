@@ -22,7 +22,7 @@ export default class WptCollector {
 		currentTestResolve: (() => void) | null = null,
 	) {
 		await this.mainPage.exposeFunction(
-			"collectWPTResults",
+			"collectWptResults",
 			(tests, _harness_status) => {
 				testResults.set(
 					this.firstTestUrl,
@@ -48,16 +48,14 @@ export default class WptCollector {
 				console.debug(
 					"Creating the parent listener for allowing the proxy iframe to call collectWPTResults via IPC",
 				);
+				// @ts-ignore
 				window.addEventListener("message", (event) => {
 					if (event.data && event.data.type === "wpt-results") {
 						console.debug(
 							"Forwarding the WPT results to the function on the parent",
 						);
-						// @ts-ignore: We just exposed this to the page
-						window.collectWPTResults(
-							event.data.tests,
-							event.data.harness_status,
-						);
+						// @ts-ignore: This function has just been exposed
+						collectWptResults(event.data.tests, event.data.harness_status);
 					}
 				});
 			});
@@ -78,7 +76,7 @@ export default class WptCollector {
 			});
 		`
 			: /* js */ `
-			add_completion_callback(collectWPTResults);
+			add_completion_callback(collectWptResults);
 		`;
 	}
 }
