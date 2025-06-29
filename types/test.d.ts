@@ -16,4 +16,6 @@ export interface TestOptions {
 	silent?: boolean;
 	underProxy?: boolean;
 	enablePlaywrightTestRunner?: boolean;
+	outputFailed?: boolean | string;
+	report?: boolean | string;
 }

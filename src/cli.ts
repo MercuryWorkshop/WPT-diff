@@ -32,9 +32,19 @@ program.option(
 	"only run test directories that match filter (ex: /dom,/js)",
 );
 
+program.option(
+	"-o, --output-failed [file]",
+	"output failed test results compared to Chrome baseline as JSON (to stdout if no file specified)",
+);
+
+program.option(
+	"-r, --report [file]",
+	"generate a standardized test report in JSON format (to stdout if no file specified)",
+);
+
 program.parse();
 
-program.opts();
+const programOptions = program.opts();
 
 let dotenvExists = false;
 try {
@@ -83,6 +93,8 @@ const startTestRes = await startTest({
 	verbose: verboseMode,
 	underProxy: config.wpt.under_proxy,
 	setupPage,
+	outputFailed: programOptions.outputFailed,
+	report: programOptions.report,
 });
 if (startTestRes.isErr())
 	throw new Error(`Failed to run WPT-diff: ${startTestRes.error}`);

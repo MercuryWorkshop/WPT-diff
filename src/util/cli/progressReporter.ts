@@ -113,10 +113,20 @@ export class ProgressReporter {
 	}
 
 	testTimeout(testPath: string): void {
-		if (!this.silent && this.verbose && this.spinner) {
-			this.spinner.warn(`${testPath} timed out`);
-		}
 		this.testsCompleted++;
+		
+		// Display timeout as skipped/other status
+		if (!this.silent && this.verbose && this.spinner) {
+			this.spinner.warn(`${testPath} (0/1 passed, 1 skipped - timeout)`);
+			
+			// Show the timeout as a skipped test in the subtest list
+			const subSpinner = ora({
+				indent: 4,
+				isEnabled: true,
+			});
+			subSpinner.warn(`${testPath} - Test timed out`);
+		}
+		
 		if (!this.silent && !this.verbose && this.progressBar) {
 			this.progressBar.update({
 				value: this.testsCompleted,

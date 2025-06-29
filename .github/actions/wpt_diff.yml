@@ -1,0 +1,171 @@
+name: 'WPT-diff Test Runner'
+description: 'Run Web Platform Tests against a proxy and collect failed results'
+inputs:
+  proxyName:
+    description: 'Name of the proxy being tested'
+    required: true
+    default: 'scramjet'
+  proxyRepo:
+    description: 'Git repository URL for the proxy (if not using scramjet submodule)'
+    required: false
+    default: ''
+  promise_timeout:
+    description: 'Promise timeout in seconds'
+    required: false
+    default: '15'
+  wpt_max_tests:
+    description: 'Maximum number of WPT tests to run'
+    required: false
+    default: '999999999'
+  wpt_tests_base_url:
+    description: 'Base URL for WPT tests'
+    required: false
+    default: 'http://web-platform.test:8000'
+  wpt_api_base_url:
+    description: 'Base URL for WPT API'
+    required: false
+    default: 'https://wpt.fyi'
+  under_proxy:
+    description: 'Run tests under proxy'
+    required: false
+    default: 'true'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Checkout with submodules
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Setup latest proxy repository
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.proxyRepo }}" ]; then
+          rm -rf ${{ inputs.proxyName }}
+          git clone ${{ inputs.proxyRepo }} ${{ inputs.proxyName }}
+        elif [ -d "${{ inputs.proxyName }}" ]; then
+          cd ${{ inputs.proxyName }}
+          git submodule update --init --recursive
+          git pull origin main || git pull origin master || true
+          cd ..
+        else
+          echo "Warning: Proxy directory ${{ inputs.proxyName }} not found and no repo URL provided"
+        fi
+
+    - name: Switch WPT to latest
+      shell: bash
+      run: |
+        cd wpt
+        git fetch origin
+        git reset --hard origin/master
+        cd ..
+
+    - name: Setup pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: latest
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: latest
+        cache: pnpm
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.x'
+
+    - name: Setup WPT hosts
+      shell: bash
+      run: |
+        cd wpt
+        ./wpt make-hosts-file | sudo tee -a /etc/hosts
+        cd ..
+
+    - name: Install WPT-diff dependencies
+      shell: bash
+      run: |
+        pnpm install
+        if [ -d "${{ inputs.proxyName }}" ]; then
+          cd ${{ inputs.proxyName }} && pnpm install && cd ..
+        fi
+        pnpm exec playwright install chromium
+
+    - name: Start WPT server
+      shell: bash
+      run: |
+        cd wpt
+        ./wpt serve --no-h2 &
+        WPT_PID=$!
+        echo "WPT_PID=$WPT_PID" >> $GITHUB_ENV
+        sleep 10
+        cd ..
+
+    - name: Create WPT-Diff config
+      shell: bash
+      run: |
+        cat > config.toml << EOF
+        [wpt]
+        max_tests = ${{ inputs.wpt_max_tests }}
+        under_proxy = ${{ inputs.under_proxy }}
+        [wpt.urls]
+        tests_base_url = "${{ inputs.wpt_tests_base_url }}"
+        api_base_url = "${{ inputs.wpt_api_base_url }}"
+        EOF
+
+    - name: Run WPT-Diff tests
+      shell: bash
+      run: |
+        # Ensure we're in the WPT-diff directory
+        if [ -f "package.json" ] && grep -q "wpt-diff" package.json; then
+          pnpm run start -- --output-failed failed-tests.json --report wpt-report.json || true
+        else
+          echo "Error: Not in WPT-diff directory"
+          exit 1
+        fi
+      env:
+        HEADLESS: true
+        VERBOSE: true
+        PROMISE_TIMEOUT: ${{ inputs.promise_timeout }}
+
+    - name: Stop WPT server
+      shell: bash
+      run: |
+        if [ ! -z "$WPT_PID" ]; then
+          kill $WPT_PID || true
+        fi
+
+    - name: Process results
+      shell: bash
+      run: |
+        if [ -f failed-tests.json ]; then
+          node -e "
+          const fs = require('fs');
+          const failed = JSON.parse(fs.readFileSync('failed-tests.json', 'utf8'));
+
+          const summary = {
+            proxy: '${{ inputs.proxyName }}',
+            totalFailed: failed.length,
+            failedTests: failed
+          };
+
+          fs.writeFileSync('test-results.json', JSON.stringify(summary, null, 2));
+          "
+        else
+          echo '{"proxy": "${{ inputs.proxyName }}", "totalFailed": 0, "failedTests": []}' > test-results.json
+        fi
+
+    - name: Upload WPT-diff failed tests
+      uses: actions/upload-artifact@v4
+      with:
+        name: wpt-diff-failed-${{ inputs.proxyName }}
+        path: test-results.json
+
+    - name: Upload WPT standard report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: wpt-report-${{ inputs.proxyName }}
+        path: wpt-report.json

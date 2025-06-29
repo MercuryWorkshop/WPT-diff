@@ -1,6 +1,7 @@
 [wpt]
-max_tests = 50
+max_tests = 5
 under_proxy = true
+
 [wpt.urls]
 tests_base_url = "http://web-platform.test:8000"
 api_base_url = "https://wpt.fyi"
