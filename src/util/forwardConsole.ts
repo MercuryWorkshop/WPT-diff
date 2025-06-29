@@ -1,28 +1,33 @@
-import type logger from "../logger.ts"
+import type logger from "../logger.ts";
 
-import type { TestOptions } from "../../types/test.d.ts"
+import type { TestOptions } from "../../types/test.d.ts";
 
 import { Page } from "playwright";
-
 
 // For propagating colored logs from the page
 // @ts-ignore: This module is not typed
 import supportsColor from "supports-color";
 // @ts-ignore: This module is not typed
-import createFormatter from "console-with-style";
+//import createFormatter from "console-with-style";
 
 // @ts-ignore: This library is typed wrong
+/*
 const level = supportsColor.stdout?.level || 0;
 const formatWithColor = createFormatter(level);
+*/
 
 interface Passthrough {
-    page: Page;
-    options: TestOptions;
-    log: typeof logger;
+	verbose: boolean;
+	page: Page;
+	options: TestOptions;
+	log: typeof logger;
 }
 
 export default function forwardConsole(passthrough: Passthrough) {
-    const { page, options, log } = passthrough;
+	const { verbose, page, options, log } = passthrough;
+
+	return;
+	if (!verbose) return;
 
 	page.on("console", async (msg) => {
 		const msgText = msg.text();
@@ -45,24 +50,31 @@ export default function forwardConsole(passthrough: Passthrough) {
 				? "[Iframe Console]"
 				: "[Browser Console]";
 
-            let formattedWithColor: string;
-            try {
-                formattedWithColor = formatWithColor(msgText);
-            } catch {
-                formattedWithColor = msgText;
-            }
+			/*
+			let formattedWithColor: string;
+			try {
+				formattedWithColor = formatWithColor(msgText);
+			} catch {
+				formattedWithColor = msgText;
+			}
+			*/
+			const formattedWithColor = msgText;
 
-            const msgType = msg.type();
+			const msgType = msg.type();
 			switch (msgType) {
-                case "log":
-                case "info":
-                    log.info(prefix, formattedWithColor);
-                    break;
-                case "debug":
-                    log.debug(prefix, formattedWithColor);
-                    break;
-                case "warning":
-                    log.warn(prefix, formattedWithColor);
+				case "log":
+				case "info":
+					log.info(prefix, formattedWithColor);
+					break;
+				case "debug":
+					log.debug(prefix, formattedWithColor);
+					break;
+				case "warning":
+					log.warn(prefix, formattedWithColor);
+					break;
+				case "error":
+					log.error(prefix, formattedWithColor);
+					break;
 			}
 		}
 	});

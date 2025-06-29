@@ -1,0 +1,6 @@
+[submodule "scramjet"]
+	path = scramjet
+	url = https://github.com/MercuryWorkshop/scramjet
+[submodule "wpt"]
+	path = wpt
+	url = https://github.com/web-platform-tests/wpt

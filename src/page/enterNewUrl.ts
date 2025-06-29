@@ -1,7 +1,14 @@
+/**
+ * This only works in Scramjet
+ */
+
 import type logger from "../logger.ts";
 
 import type { Page } from "playwright";
 
+/**
+ * @param pass
+ */
 export async function enterNewUrl(pass: {
 	page: Page;
 	url: string;
@@ -9,7 +16,7 @@ export async function enterNewUrl(pass: {
 }): Promise<void> {
 	const { page, url, log } = pass;
 
-	log.info(
+	log.debug(
 		`Attempting to navigate to ${url} in the proxy frame through the URL bar`,
 	);
 

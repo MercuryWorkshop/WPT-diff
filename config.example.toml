@@ -1,4 +1,4 @@
-ßpromise_timeout=15
+promise_timeout=15
 
 [wpt]
 max_tests = 30
@@ -6,5 +6,5 @@ max_tests = 30
 under_proxy = true
 
 [wpt.urls]
-tests_base_url = "https://wpt.live"
+tests_base_url = "http://web-platform.test:8000"
 api_base_url = "https://wpt.fyi"

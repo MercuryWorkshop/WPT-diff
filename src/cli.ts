@@ -1,6 +1,6 @@
 import { Command } from "commander";
 
-import { setupPage } from "../../tests/util/setupPage.ts";
+import { setupPage } from "../scramjet/tests/util/setupPage.ts";
 import { startTest } from "./index";
 
 import log from "./logger";
@@ -13,6 +13,8 @@ const program = new Command();
 
 import { access } from "node:fs/promises";
 import { resolve } from "node:path";
+
+import { spawn } from "node:child_process";
 
 /**
  * The paths to the config files in the repo
@@ -65,6 +67,9 @@ const config = configRes.value;
 log.info(
 	`About to run the tests with debug mode ${debugMode ? "enabled" : "disabled"}`,
 );
+log.info(
+	`About to run the tests with verbose mode ${verboseMode ? "enabled" : "disabled"}`,
+);
 
 const startTestRes = await startTest({
 	wptUrls: {
@@ -75,6 +80,7 @@ const startTestRes = await startTest({
 	headless: debugMode,
 	maxTests: config.wpt.max_tests,
 	silent: !verboseMode,
+	verbose: verboseMode,
 	underProxy: config.wpt.under_proxy,
 	setupPage,
 });
@@ -82,6 +88,10 @@ if (startTestRes.isErr())
 	throw new Error(`Failed to run WPT-diff: ${startTestRes.error}`);
 const wptDiffRes = startTestRes.value;
 
-log.success(`Passed Tests: ${wptDiffRes.results.pass}`);
-log.error(`Failed Tests: ${wptDiffRes.results.fail}`);
-log.debug(`Other Test results: ${wptDiffRes.results.other}`);
+if (!wptDiffRes || !("results" in wptDiffRes)) {
+	log.error("No results were returned from the WPT-diff run");
+} else {
+	log.success(`Passed Tests: ${wptDiffRes.results.pass}`);
+	log.error(`Failed Tests: ${wptDiffRes.results.fail}`);
+	log.debug(`Other Test results: ${wptDiffRes.results.other}`);
+}

@@ -1,62 +1,42 @@
 import type logger from "../logger";
 
-import type { Route, Request } from "playwright";
+import type { Page } from "playwright";
 
-export default function createTestHarness(
-	pass: {
-		underProxy: boolean;
-		bodyAddition: string;
-		log: typeof logger;
-	},
-	// biome-ignore lint/suspicious/noExplicitAny: This is how it is typed, directly from playwright
-): (route: Route, req: Request) => Promise<any> {
-	const { bodyAddition, log } = pass;
-
-	const testHarness = async (
-		route: Route,
-		_req: Request,
-		// biome-ignore lint/suspicious/noExplicitAny: This is how it is typed inside of playwright, so we will just go with it
-	): Promise<any> => {
-		log.debug("Attempting to intercept the test harness to rewrite it...");
-
-		const req = route.request();
-		const sw = req.serviceWorker();
-		if (sw) {
-			const reqUrl = req.url();
-			let rawDecodedUrl: string;
-			try {
-				rawDecodedUrl = $scramjet?.codec?.decode(reqUrl);
-			} catch (err) {
-				throw new Error(
-					`[WPT-diff SW] Failed to decode a URL inside of the SW while trying to intercept the test harness: ${err}`,
-				);
-			}
-			let decodedUrl: URL;
-			try {
-				decodedUrl = new URL(rawDecodedUrl);
-			} catch (err) {
-				throw new Error(
-					`Failed to decode the raw decoded url ${rawDecodedUrl} from Scramjet's config decode method: ${err}`,
-				);
-			}
-			if (decodedUrl.pathname.startsWith("/resources/testharness.js")) {
-				log.info("[WPT-diff SW] Intercepted the test harness ", decodedUrl);
-
-				const resp = await route.fetch();
-				const body = await resp.text();
-
-				await route.fulfill({
-					body: body + bodyAddition,
-					contentType: "text/javascript",
-					status: 200,
-				});
-			}
-		}
-	};
-
-	return testHarness;
-}
-
-export function shouldRoute(url: URL): boolean {
-	return url.href.startsWith("http://localhost:1337/scramjet/");
+export default async function initTestHarnessInterceptor(pass: {
+	page: Page;
+	bodyAddition: string;
+	log: typeof logger;
+}): Promise<void> {
+	const { page, bodyAddition, log } = pass;
+	log.debug(
+		"\nCreating a Mutation Observer to detect when a test harness script is added to the page",
+	);
+	log.debug(`\n\tInjecting: ${bodyAddition}`);
+	await page.addInitScript(/** js */ `
+		new MutationObserver((mutations) => {
+			for (const mutation of mutations)
+				for (const node of [...mutation.addedNodes]) {
+                    if (node instanceof HTMLScriptElement && node.src) {
+                        console.debug("Found a script node being added", node);
+					}
+					if (
+						node instanceof HTMLScriptElement &&
+						node.src &&
+					    node.src.endsWith("testharnessreport.js")
+				    ) {
+                        console.debug("Found the test harness script before creation");
+                        const collectionScript = document.createElement("script");
+                        collectionScript.textContent = \`${bodyAddition.replace(
+													/\`/g,
+													"\\`",
+												)}\`;
+                        node.after(collectionScript);
+                    }
+    }
+		}).observe(document, { childList: true, subtree: true });
+		console.debug(
+			"Starting the Mutation Observer to watch for the addition of the script with the test harness",
+		);
+	`);
+	//await page.addInitScript();
 }
