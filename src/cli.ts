@@ -28,11 +28,6 @@ const CONFIG_PATHS: ConfigPaths = {
 program.name("WPT-diff").description("A web-platform-tests runner meant for interception proxies to test against to ensure proper API interceptor compatibility.").version("1.0.0");
 
 program.option(
-	"-f, --filter <directories>",
-	"only run test directories that match filter (ex: /dom,/js)",
-);
-
-program.option(
 	"-o, --output-failed [file]",
 	"output failed test results compared to Chrome baseline as JSON (to stdout if no file specified)",
 );
@@ -41,7 +36,9 @@ program.option(
 	"-r, --report [file]",
 	"generate a standardized test report in JSON format (to stdout if no file specified)",
 );
+
 program.argument("[scope]", "The scope of tests to run. (optional)")
+
 program.parse();
 
 const programOptions = program.opts();
@@ -69,7 +66,7 @@ const startTestRes = await startTest({
 	},
 	maxTests: config.wpt.max_tests,
 	underProxy: config.wpt.under_proxy,
-	filter: programOptions.filter,
+	scope: program.args[0],
 	outputFailed: programOptions.outputFailed,
 	report: programOptions.report,
 	setupPage,

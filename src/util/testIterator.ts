@@ -33,15 +33,7 @@ export default function* createTestIterator(options: TestIteratorOptions) {
 		} catch (err) {
 			throw new Error(`Failed to parse the test URL ${rawFullUrl}: ${err}`);
 		}
-
-		// We don't yet have the capability to run these tests on our WPT runner
-		const skipTest = fullUrl.pathname.startsWith("/wasm/");
-		if (skipTest) {
-			console.log("wasm test")
-			actualMaxTests++;
-			continue;
-		}
-
+		
 		yield {
 			i,
 			testPath: testPath.test,

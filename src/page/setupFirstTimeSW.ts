@@ -9,19 +9,12 @@ import type logger from "../logger";
 
 import type { BrowserContext, Page, FrameLocator } from "playwright";
 
-declare global {
-	const $scramjet: {
-		codec: {
-			decode: (url: string) => string;
-		};
-	};
-}
-
+/*
 import {
 	default as createTestHarnessSW,
 	createShouldRoute as createShouldRouteTestHarnessSW,
-} from "../routeInterceptors/testHarnessSW";
-
+} from "../routeInterceptors/testHarnessSWOLD";
+*/
 import type WptCollector from "./wptCollector";
 
 interface Passthrough {

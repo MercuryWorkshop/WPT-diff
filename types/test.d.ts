@@ -10,7 +10,7 @@ export interface TestOptions {
 	};
 	maxTests: number | "all";
 	underProxy: boolean;
-	filter: string;
+	scope: string;
 	outputFailed: boolean | string;
 	report: boolean | string;
 	// biome-ignore lint/complexity/noBannedTypes: I will elaborate later leave me alone

@@ -96,6 +96,8 @@ export async function startTest(options: TestOptions): Promise<
 	// Store full Chrome report data if report generation is enabled
 	const chromeReportData = options.report ? reportData : null;
 
+	if (options.scope) testPaths = testPaths.filter((test) => test.test.startsWith(options.scope))
+	testPaths = testPaths.filter((test) => !test.test.startsWith("/wasm/"))
 	if (options.maxTests && typeof options.maxTests === "number") testPaths = testPaths.slice(0, options.maxTests);
 
 	// Track test run timing
