@@ -22,5 +22,5 @@ export default {
 	debug: (...args: any[]) =>
 		console.log(LOG_PREFIX, chalk.gray("ൠ >"), ...args),
 	*/
-	debug: () => ({}),
+	debug: (...args: any[]) => ({}),
 };

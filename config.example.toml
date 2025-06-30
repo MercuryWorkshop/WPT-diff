@@ -1,6 +1,7 @@
 promise_timeout=15
 
 [wpt]
+# number of tests to run, "all" to run all tests
 max_tests = 30
 # You would only disable this for testing the runner to determine if an issue is related to the SW proxy or the runner itself
 under_proxy = true

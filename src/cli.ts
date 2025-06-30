@@ -82,22 +82,23 @@ log.info(
 );
 
 const startTestRes = await startTest({
+	logger: log,
 	wptUrls: {
 		test: config.wpt.urls.tests_base_url,
 		api: config.wpt.urls.api_base_url,
 	},
-	logger: log,
-	headless: debugMode,
 	maxTests: config.wpt.max_tests,
-	silent: !verboseMode,
-	verbose: verboseMode,
 	underProxy: config.wpt.under_proxy,
-	setupPage,
 	outputFailed: programOptions.outputFailed,
 	report: programOptions.report,
+	setupPage,
+	debug: debugMode,
+	verbose: verboseMode,
+	silent: !verboseMode,
 });
 if (startTestRes.isErr())
 	throw new Error(`Failed to run WPT-diff: ${startTestRes.error}`);
+
 const wptDiffRes = startTestRes.value;
 
 if (!wptDiffRes || !("results" in wptDiffRes)) {

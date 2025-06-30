@@ -38,5 +38,4 @@ export default async function initTestHarnessInterceptor(pass: {
 			"Starting the Mutation Observer to watch for the addition of the script with the test harness",
 		);
 	`);
-	//await page.addInitScript();
 }

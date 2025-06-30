@@ -9,11 +9,9 @@ import {
 	okAsync as nOkAsync,
 } from "neverthrow";
 
-import type { ConfigPaths } from "#types/config.d.ts";
+import { ParsedTomlConfigSchema, type ConfigPaths, ParsedTomlConfig } from "#types/config.ts";
 
 import { parse } from "smol-toml";
-//import typia from "typia";
-import type { ParsedTomlConfig } from "#types/config.d.ts";
 
 import { constants, copyFile, readFile } from "node:fs/promises";
 
@@ -31,22 +29,18 @@ export default async function loadConfig(
 
 	const rawToml = await readFile(configPaths.main, "utf-8");
 	const parsedToml = parse(rawToml);
+	const parseResult = ParsedTomlConfigSchema.safeParse(parsedToml);
 
-	// FIXME: I am having issues with typia transforms
-	/*
-	const configValidationRes = typia.validate<ParsedTomlConfig>(parsedToml);
-	if (!configValidationRes.success) {
-		const err = configValidationRes.errors
-			.map((err) => `${err.path}: ${err.expected} but got ${err.value}`)
+	if (!parseResult.success) {
+		const err = parseResult.error.errors
+			.map((err) => `${err.path.join('.')}: expected ${err.message}`)
 			.join(", ");
 
 		return nErrAsync(
 			`Failed to validate the 'config.toml' that you provided: ${err}`,
 		);
 	}
-	const toml = configValidationRes.data;
-	*/
+	const toml = parseResult.data;
 
-	// @ts-ignore: Let's not worry about validation for now, just assume the runtime values are safe
-	return nOkAsync(parsedToml);
+	return nOkAsync(toml);
 }

@@ -8,14 +8,13 @@ export interface TestOptions {
 		test: string;
 		api: string;
 	};
+	maxTests: number | "all";
+	underProxy: boolean;
+	outputFailed: boolean | string;
+	report: boolean | string;
 	// biome-ignore lint/complexity/noBannedTypes: I will elaborate later leave me alone
 	setupPage: (page: Page, url: string) => Promise<FrameLocator>;
-	headless?: boolean;
-	maxTests?: number;
-	verbose?: boolean;
-	silent?: boolean;
-	underProxy?: boolean;
-	enablePlaywrightTestRunner?: boolean;
-	outputFailed?: boolean | string;
-	report?: boolean | string;
+	debug: boolean;
+	verbose: boolean;
+	silent: boolean;
 }

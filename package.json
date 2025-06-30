@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@opentf/cli-pbar": "^0.7.2",
+    "@playwright/test": "^1.53.1",
     "chalk": "^5.4.1",
     "commander": "^14.0.0",
     "console-with-style": "^1.1.0",
@@ -37,7 +38,8 @@
     "playwright": "^1.53.1",
     "smol-toml": "^1.3.4",
     "tslog": "^4.9.3",
-    "typia": "^9.3.1"
+    "typia": "^9.3.1",
+    "zod": "^3.25.67"
   },
   "imports": {
     "#types/*": "./types/*",

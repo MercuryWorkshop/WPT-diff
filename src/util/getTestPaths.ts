@@ -10,7 +10,7 @@ export interface GetTestPathsOptions {
 		test: string;
 		api: string;
 	};
-	maxTests?: number;
+	maxTests?: number | "all";
 }
 
 export async function getWPTTestPaths(options: GetTestPathsOptions): Promise<
@@ -60,7 +60,7 @@ export async function getWPTTestPaths(options: GetTestPathsOptions): Promise<
 	let testPaths: {
 		test: string;
 	}[] = reportData.results;
-
+	console.log(reportData)
 	if (options.maxTests) testPaths = testPaths.slice(0, options.maxTests);
 
 	const testIterator = createTestIterator({

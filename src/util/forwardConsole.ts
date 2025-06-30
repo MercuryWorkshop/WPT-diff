@@ -17,17 +17,15 @@ const formatWithColor = createFormatter(level);
 */
 
 interface Passthrough {
-	verbose: boolean;
-	page: Page;
 	options: TestOptions;
+	page: Page;
 	log: typeof logger;
 }
 
 export default function forwardConsole(passthrough: Passthrough) {
-	const { verbose, page, options, log } = passthrough;
+	const { options, page, log } = passthrough;
 
 	return;
-	if (!verbose) return;
 
 	page.on("console", async (msg) => {
 		const msgText = msg.text();

@@ -16,7 +16,7 @@ inputs:
   wpt_max_tests:
     description: 'Maximum number of WPT tests to run'
     required: false
-    default: '999999999'
+    default: 'max'
   wpt_tests_base_url:
     description: 'Base URL for WPT tests'
     required: false
