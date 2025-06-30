@@ -21,8 +21,8 @@ export async function enterNewUrl(pass: {
 	);
 
 	// Manually enter the new test URL inside of the page
-	const bar = pass.page.locator(".bar");
-	await bar.fill(pass.url);
+	const bar = page.locator(".bar");
+	await bar.fill(url);
 	await bar.press("Enter");
 	// @ts-ignore Do something less hacky than a timeout
 	await page.waitForTimeout(1000);

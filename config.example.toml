@@ -1,4 +1,4 @@
-promise_timeout=15
+promise_timeout = 15
 
 [wpt]
 # number of tests to run, "all" to run all tests

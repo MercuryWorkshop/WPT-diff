@@ -1,4 +1,4 @@
-promise_timeout=15
+promise_timeout = 15
 
 [wpt]
 max_tests = 15

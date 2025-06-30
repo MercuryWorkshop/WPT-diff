@@ -205,8 +205,8 @@ export async function startTest(options: TestOptions): Promise<
 
 			await page.waitForLoadState("load");
 
-			// Wait for the tests to complete or timeout in 30 seconds
-			const SECS = 5;
+			// Wait for the tests to complete or timeout in 10 seconds
+			const SECS = 10;
 			const completedInTime = await Promise.race([
 				testCompletionPromise.then(() => true),
 				new Promise<boolean>((resolve) =>
@@ -360,16 +360,15 @@ async function generateWPTReport(
 	}
 
 	const report: WPTReport = {
-		results,
-		run_info: {
+		run_info: Object.assign(chromeReportData.run_info, {
 			product: options.underProxy ? "proxy" : "chrome",
 			browser_version: options.underProxy ? "unknown" : undefined,
 			os: os.platform(),
 			version: os.release(),
 			processor: os.arch(),
-			...(chromeReportData?.run_info || {})
-		},
+			}),
 		time_start: timeStart,
+		results,
 		time_end: timeEnd
 	};
 
