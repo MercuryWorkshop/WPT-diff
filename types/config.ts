@@ -1,8 +1,11 @@
 import { z } from "zod";
 export const ParsedTomlConfigSchema = z.object({
-  promise_timeout: z.number(),
+  debug: z.object({
+    debug: z.boolean(),
+    verbose: z.boolean()
+  }),
   wpt: z.object({
-	max_tests: z.number().or(z.literal("all")),
+	  max_tests: z.number().or(z.literal("all")),
     under_proxy: z.boolean(),
     urls: z.object({
       tests_base_url: z.string(),

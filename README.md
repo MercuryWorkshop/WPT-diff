@@ -2,7 +2,7 @@
 
 ---
 
-WPT-diff is a test suite meant for interception proxies to test against [web-platform-tests](https://github.com/web-platform-tests/wpt) to ensure proper API interceptor compatibility.
+WPT-diff is a [web-platform-tests](https://github.com/web-platform-tests/wpt) runner meant for interception proxies to test against to ensure proper API interceptor compatibility.
 
 ## Development
 

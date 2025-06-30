@@ -9,10 +9,6 @@ inputs:
     description: 'Git repository URL for the proxy (if not using scramjet submodule)'
     required: false
     default: ''
-  promise_timeout:
-    description: 'Promise timeout in seconds'
-    required: false
-    default: 15
   wpt_max_tests:
     description: 'Maximum number of WPT tests to run'
     required: false
@@ -125,10 +121,6 @@ runs:
           echo "Error: Not in WPT-diff directory"
           exit 1
         fi
-      env:
-        HEADLESS: true
-        VERBOSE: true
-        PROMISE_TIMEOUT: ${{ inputs.promise_timeout }}
 
     - name: Stop WPT server
       shell: bash

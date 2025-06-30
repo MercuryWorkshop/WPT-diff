@@ -25,7 +25,7 @@ const CONFIG_PATHS: ConfigPaths = {
 	dotenv: resolve(import.meta.dirname, "../.env"),
 };
 
-program.name("WPT-diff").description("A way to test proxies").version("1.0.0");
+program.name("WPT-diff").description("A web-platform-tests runner meant for interception proxies to test against to ensure proper API interceptor compatibility.").version("1.0.0");
 
 program.option(
 	"-f, --filter <directories>",
@@ -41,39 +41,19 @@ program.option(
 	"-r, --report [file]",
 	"generate a standardized test report in JSON format (to stdout if no file specified)",
 );
-
+program.argument("[scope]", "The scope of tests to run. (optional)")
 program.parse();
 
 const programOptions = program.opts();
-
-let dotenvExists = false;
-try {
-	await access(CONFIG_PATHS.dotenv);
-	dotenvExists = true;
-} catch {}
-if (dotenvExists) {
-	const dotenvRes = dotenvConfig({
-		path: CONFIG_PATHS.dotenv,
-	});
-	if (dotenvRes.error)
-		throw new Error(`Failed to load the dotenv config: ${dotenvRes.error}`);
-}
-const debugMode =
-	process.env.DEBUG === "1" ||
-	process.env.DEBUG?.toLowerCase() === "true" ||
-	process.env.DEBUG?.toLowerCase() === "t" ||
-	true;
-const verboseMode =
-	process.env.VERBOSE === "1" ||
-	process.env.VERBOSE?.toLowerCase() === "true" ||
-	process.env.VERBOSE?.toLowerCase() === "t" ||
-	debugMode;
 
 const configRes = await loadConfig(CONFIG_PATHS);
 if (configRes.isErr())
 	throw new Error(`Failed to load the TOML config: ${configRes.error}`);
 const config = configRes.value;
 
+const debugMode = config.debug.debug;
+const verboseMode = config.debug.verbose;
+	
 log.info(
 	`About to run the tests with debug mode ${debugMode ? "enabled" : "disabled"}`,
 );
@@ -89,6 +69,7 @@ const startTestRes = await startTest({
 	},
 	maxTests: config.wpt.max_tests,
 	underProxy: config.wpt.under_proxy,
+	filter: programOptions.filter,
 	outputFailed: programOptions.outputFailed,
 	report: programOptions.report,
 	setupPage,
