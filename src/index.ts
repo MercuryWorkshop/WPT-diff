@@ -33,6 +33,8 @@ import setupFirstTimeSW from "./page/setupFirstTimeSW.ts";
 import type { TestOptions } from "#types/test.d.ts";
 import { ProgressReporter } from "#util/cli/progressReporter.ts";
 
+const DEFAULT_WPT_TIMEOUT = 10;
+
 /**
  * Starts the test for WPT-diff
  * @param headless Runs the browser in headless mode if enabled (only useful for debugging)
@@ -207,12 +209,14 @@ export async function startTest(options: TestOptions): Promise<
 
 			await page.waitForLoadState("load");
 
+			const metaTimeoutLocator = page.locator('meta[name="timeout"][content="long"]');
+			const timeoutCount = await metaTimeoutLocator.count();
+
 			// Wait for the tests to complete or timeout in 10 seconds
-			const SECS = 10;
 			const completedInTime = await Promise.race([
 				testCompletionPromise.then(() => true),
 				new Promise<boolean>((resolve) =>
-					setTimeout(() => resolve(false), SECS * 1000),
+					setTimeout(() => resolve(false), DEFAULT_WPT_TIMEOUT * 1000),
 				),
 			]);
 

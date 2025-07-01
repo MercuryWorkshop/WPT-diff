@@ -82,7 +82,8 @@ const wptDiffRes = startTestRes.value;
 if (!wptDiffRes || !("results" in wptDiffRes)) {
 	log.error("No results were returned from the WPT-diff run");
 } else {
-	log.success(`Passed Tests: ${wptDiffRes.results.pass}`);
-	log.error(`Failed Tests: ${wptDiffRes.results.fail}`);
+	log.success(`Passed Subtests: ${wptDiffRes.results.pass}`);
+	log.error(`Failed Subtests: ${wptDiffRes.results.fail}`);
+	log.info(`Total Subtests: ${wptDiffRes.results.pass}/${wptDiffRes.results.pass + wptDiffRes.results.fail}`);
 	log.debug(`Other Test results: ${wptDiffRes.results.other}`);
 }
