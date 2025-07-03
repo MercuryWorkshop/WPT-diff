@@ -3,7 +3,7 @@ debug = true
 verbose = true
 
 [wpt]
-max_tests = 15
+max_tests = "all"
 under_proxy = true
 
 [wpt.urls]
