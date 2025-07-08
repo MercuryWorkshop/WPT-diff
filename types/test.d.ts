@@ -1,4 +1,4 @@
-import type log from "../src/logger.ts"
+import type log from "../src/logger.ts";
 
 import type { Page } from "playwright";
 

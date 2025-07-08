@@ -4,6 +4,6 @@ declare global {
 			codec: {
 				decode: (url: string) => string;
 			};
-		}
+		};
 	}
 }

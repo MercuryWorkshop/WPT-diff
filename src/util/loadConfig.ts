@@ -9,7 +9,11 @@ import {
 	okAsync as nOkAsync,
 } from "neverthrow";
 
-import { ParsedTomlConfigSchema, type ConfigPaths, ParsedTomlConfig } from "#types/config.ts";
+import {
+	ParsedTomlConfigSchema,
+	type ConfigPaths,
+	ParsedTomlConfig,
+} from "#types/config.ts";
 
 import { parse } from "smol-toml";
 
@@ -33,7 +37,7 @@ export default async function loadConfig(
 
 	if (!parseResult.success) {
 		const err = parseResult.error.errors
-			.map((err) => `${err.path.join('.')}: expected ${err.message}`)
+			.map((err) => `${err.path.join(".")}: expected ${err.message}`)
 			.join(", ");
 
 		return nErrAsync(

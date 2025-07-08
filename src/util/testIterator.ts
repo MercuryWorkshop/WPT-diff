@@ -33,7 +33,7 @@ export default function* createTestIterator(options: TestIteratorOptions) {
 		} catch (err) {
 			throw new Error(`Failed to parse the test URL ${rawFullUrl}: ${err}`);
 		}
-		
+
 		yield {
 			i,
 			testPath: testPath.test,

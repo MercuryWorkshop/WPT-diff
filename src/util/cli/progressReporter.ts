@@ -1,7 +1,6 @@
 import { ProgressBar } from "@opentf/cli-pbar";
 import ora from "ora";
-import type { WPTTestResult } from "#types/index.d.ts";
-import { WPTTestStatus } from "#types/wpt.ts";
+import type { WPT } from "#types/wpt.ts";
 
 export interface ProgressReporterOptions {
 	verbose: boolean;
@@ -52,7 +51,7 @@ export class ProgressReporter {
 	 * Updates the results and cleans up the spinner
 	 * @param results The WPT results
 	 */
-	endTest(results: WPTTestResult[]): void {
+	endTest(results: WPT.TestResult[]): void {
 		this.testsCompleted++;
 
 		let pass = 0;
@@ -60,8 +59,8 @@ export class ProgressReporter {
 		let other = 0;
 
 		for (const testResult of results) {
-			if (testResult.status === WPTTestStatus.PASS) pass++;
-			else if (testResult.status === WPTTestStatus.FAIL) fail++;
+			if (testResult.status === WPT.TestStatus.PASS) pass++;
+			else if (testResult.status === WPT.TestStatus.FAIL) fail++;
 			else other++;
 		}
 
@@ -88,9 +87,9 @@ export class ProgressReporter {
 						isEnabled: true,
 					});
 
-					if (testResult.status === WPTTestStatus.PASS) {
+					if (testResult.status === WPT.TestStatus.PASS) {
 						subSpinner.succeed(testResult.name);
-					} else if (testResult.status === WPTTestStatus.FAIL) {
+					} else if (testResult.status === WPT.TestStatus.FAIL) {
 						const msg = testResult.message
 							? `${testResult.name} - ${testResult.message}`
 							: testResult.name;
@@ -114,11 +113,11 @@ export class ProgressReporter {
 
 	testTimeout(testPath: string): void {
 		this.testsCompleted++;
-		
+
 		// Display timeout as skipped/other status
 		if (!this.silent && this.verbose && this.spinner) {
 			this.spinner.warn(`${testPath} (0/1 passed, 1 skipped - timeout)`);
-			
+
 			// Show the timeout as a skipped test in the subtest list
 			const subSpinner = ora({
 				indent: 4,
@@ -126,7 +125,7 @@ export class ProgressReporter {
 			});
 			subSpinner.warn(`${testPath} - Test timed out`);
 		}
-		
+
 		if (!this.silent && !this.verbose && this.progressBar) {
 			this.progressBar.update({
 				value: this.testsCompleted,

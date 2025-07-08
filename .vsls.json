@@ -1,3 +1,4 @@
 {
-	"gitignore": "none"
+	"$schema": "https://json.schemastore.org/vsls",
+	"hideFiles": ["!dist", "!scramjet"]
 }

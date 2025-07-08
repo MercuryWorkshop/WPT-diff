@@ -60,9 +60,10 @@ export async function getWPTTestPaths(options: GetTestPathsOptions): Promise<
 	let testPaths: {
 		test: string;
 	}[] = reportData.results;
-	
-	if (options.maxTests && typeof options.maxTests === "number") testPaths = testPaths.slice(0, options.maxTests);
-	
+
+	if (options.maxTests && typeof options.maxTests === "number")
+		testPaths = testPaths.slice(0, options.maxTests);
+
 	const testIterator = createTestIterator({
 		wptUrls: options.wptUrls,
 		testPaths,

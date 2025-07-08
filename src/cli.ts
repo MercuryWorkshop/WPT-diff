@@ -1,7 +1,7 @@
 import { Command } from "commander";
 
 import { setupPage } from "../scramjet/tests/util/setupPage.ts";
-import { startTest } from "./index";
+import TestRunner from "./index";
 
 import log from "./logger";
 
@@ -25,7 +25,12 @@ const CONFIG_PATHS: ConfigPaths = {
 	dotenv: resolve(import.meta.dirname, "../.env"),
 };
 
-program.name("WPT-diff").description("A web-platform-tests runner meant for interception proxies to test against to ensure proper API interceptor compatibility.").version("1.0.0");
+program
+	.name("WPT-diff")
+	.description(
+		"A web-platform-tests runner meant for interception proxies to test against to ensure proper API interceptor compatibility.",
+	)
+	.version("1.0.0");
 
 program.option(
 	"-o, --output-failed [file]",
@@ -37,7 +42,7 @@ program.option(
 	"generate a standardized test report in JSON format (to stdout if no file specified)",
 );
 
-program.argument("[scope]", "The scope of tests to run. (optional)")
+program.argument("[scope]", "The scope of tests to run. (optional)");
 
 program.parse();
 
@@ -50,7 +55,7 @@ const config = configRes.value;
 
 const debugMode = config.debug.debug;
 const verboseMode = config.debug.verbose;
-	
+
 log.info(
 	`About to run the tests with debug mode ${debugMode ? "enabled" : "disabled"}`,
 );
@@ -58,11 +63,12 @@ log.info(
 	`About to run the tests with verbose mode ${verboseMode ? "enabled" : "disabled"}`,
 );
 
-const startTestRes = await startTest({
+const testRunner = new TestRunner({
 	logger: log,
 	wptUrls: {
 		test: config.wpt.urls.tests_base_url,
 		api: config.wpt.urls.api_base_url,
+		testsBaseUrl: config.wpt.urls.tests_base_url,
 	},
 	maxTests: config.wpt.max_tests,
 	underProxy: config.wpt.under_proxy,
@@ -74,6 +80,8 @@ const startTestRes = await startTest({
 	verbose: verboseMode,
 	silent: !verboseMode,
 });
+
+const startTestRes = await testRunner.startTest();
 if (startTestRes.isErr())
 	throw new Error(`Failed to run WPT-diff: ${startTestRes.error}`);
 
@@ -84,6 +92,8 @@ if (!wptDiffRes || !("results" in wptDiffRes)) {
 } else {
 	log.success(`Passed Subtests: ${wptDiffRes.results.pass}`);
 	log.error(`Failed Subtests: ${wptDiffRes.results.fail}`);
-	log.info(`Total Subtests: ${wptDiffRes.results.pass}/${wptDiffRes.results.pass + wptDiffRes.results.fail}`);
+	log.info(
+		`Total Subtests: ${wptDiffRes.results.pass}/${wptDiffRes.results.pass + wptDiffRes.results.fail}`,
+	);
 	log.debug(`Other Test results: ${wptDiffRes.results.other}`);
 }
