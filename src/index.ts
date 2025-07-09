@@ -295,9 +295,9 @@ export default class TestRunner {
 
 				const wptUpdateManifestTimeout =
 					testTimeoutMap.get(currentTestPath) || DEFAULT_WPT_TIMEOUT;
-				// This is only needed if the timeout is not already "long" (`30` seconds)
+				// This is only needed if the timeout is not already "long" (`60` seconds)
 				// @see https://web-platform-tests.org/writing-tests/testharness-api.html#harness-timeout
-				if (wptUpdateManifestTimeout === 30) {
+				if (wptUpdateManifestTimeout === 60) {
 					const timeoutSymbol = Symbol("timeout");
 					const metaTimeoutLocator = page.locator(
 						'meta[name="timeout"][content="long"]',
@@ -434,20 +434,22 @@ export default class TestRunner {
 	 */
 	private async getTestTimeoutMap(
 		updateManifest: WPT.UpdateManifest.Manifest,
-	): Promise<Map<string, 10 | 30>> {
+	): Promise<Map<string, 10 | 60>> {
 		const timeoutMap = new Map<string, number>();
 
 		for (const [testPath, testInfo] of Object.values(
 			updateManifest.items.testharness,
-		).map((testArray) => testArray[0]))
+		).map((testArray) => testArray[0])) {
 			if (!("timeout" in testInfo)) {
 				timeoutMap.set(testPath, 10);
 			} else {
 				if (testInfo.timeout === "long") {
-					timeoutMap.set(testPath, 30);
+					timeoutMap.set(testPath, 60);
 				}
 				timeoutMap.set(testPath, 10);
 			}
+		}
+		/*
 		for (const [testPath, refTest, testInfo] of Object.values(
 			updateManifest.items.reftest,
 		).map((testArray) => testArray[0])) {
@@ -459,7 +461,7 @@ export default class TestRunner {
 					continue;
 				}
 				if (testInfo.timeout === "long") {
-					timeoutMap.set(testPath, 30);
+					timeoutMap.set(testPath, 60);
 				}
 				timeoutMap.set(testPath, 10);
 			}
@@ -469,8 +471,9 @@ export default class TestRunner {
 			(testArray) => testArray[0],
 		))
 			timeoutMap.set(testPath, 10);
+		*/	
 
-		return timeoutMap;
+		return timeoutMap as Map<string, 10 | 60>;
 	}
 
 	private async getWPTUpdateManifest(): ResultAsync<
@@ -530,7 +533,7 @@ export default class TestRunner {
 
 	private filterTests(
 		testPaths: { test: string }[],
-		testTimeoutMap: Map<string, 10 | 30>,
+		testTimeoutMap: Map<string, 10 | 60>,
 	): { test: string }[] {
 		if (this.options.scope)
 			testPaths = testPaths.filter((test) =>
@@ -541,7 +544,8 @@ export default class TestRunner {
 		if (this.options.maxTests && typeof this.options.maxTests === "number")
 			testPaths = testPaths.slice(0, this.options.maxTests);
 		// Only use tests we can run in our runner
-		testPaths = testPaths.filter((test) => testTimeoutMap.has(test.test));
+		// timeout map is broken rn
+		//testPaths = testPaths.filter((test) => testTimeoutMap.has(test.test));
 		return testPaths;
 	}
 

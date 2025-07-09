@@ -22,7 +22,7 @@ interface Passthrough {
 	page: Page;
 	wptCollector: WptCollector;
 	setupPage: (page: Page, url: string) => Promise<FrameLocator>;
-	browserContext: BrowserContext;
+	browserCtx: BrowserContext;
 	log: typeof logger;
 }
 
@@ -32,7 +32,7 @@ interface Passthrough {
 export default async function setupFirstTimeSW(
 	passthrough: Passthrough,
 ): Promise<ResultAsync<void, Error>> {
-	const { url, page, wptCollector, setupPage, browserContext, log } =
+	const { url, page, wptCollector, setupPage, browserCtx, log } =
 		passthrough;
 
 	log.debug(
@@ -43,7 +43,7 @@ export default async function setupFirstTimeSW(
 	// Looks like we already did that
 	//wptCollector.start();
 	await setupPage(page, url);
-	const sws = browserContext.serviceWorkers();
+	const sws = browserCtx.serviceWorkers();
 	// Sanity check: ensure that the SW has been setup properly by `setupPage`
 	if (sws.length === 0)
 		return nErrAsync(

@@ -1,6 +1,6 @@
 import { ProgressBar } from "@opentf/cli-pbar";
 import ora from "ora";
-import type { WPT } from "#types/wpt.ts";
+import { WPT } from "#types/wpt.ts";
 
 export interface ProgressReporterOptions {
 	verbose: boolean;

@@ -10,7 +10,7 @@ export namespace WPT {
 		OPTIONAL_FEATURE_UNSUPPORTED = 4,
 	}
 
-	namespace UpdateManifest {
+	export namespace UpdateManifest {
 		type TestHarness = {
 			[key: string]: [
 				/**
@@ -20,7 +20,7 @@ export namespace WPT {
 				{
 					/**
 					 * `null` or `timeout` being omitted entirely means default, which is 10 seconds
-					 * `long` means 30 seconds
+					 * `long` means 60 seconds
 					 */
 					timeout?: null | "long";
 				},
@@ -44,7 +44,7 @@ export namespace WPT {
 				{
 					/**
 					 * `null` or `timeout` being omitted entirely means default, which is 10 seconds
-					 * `long` means 30 seconds
+					 * `long` means 60 seconds
 					 */
 					timeout?: null | "long";
 				},
