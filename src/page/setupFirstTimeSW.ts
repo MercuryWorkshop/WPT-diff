@@ -32,8 +32,7 @@ interface Passthrough {
 export default async function setupFirstTimeSW(
 	passthrough: Passthrough,
 ): Promise<ResultAsync<void, Error>> {
-	const { url, page, wptCollector, setupPage, browserCtx, log } =
-		passthrough;
+	const { url, page, wptCollector, setupPage, browserCtx, log } = passthrough;
 
 	log.debug(
 		"Setting up the proxy site demo and the SW for the first time with first url",

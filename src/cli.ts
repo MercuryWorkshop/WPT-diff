@@ -5,16 +5,12 @@ import TestRunner from "./index";
 
 import log from "./logger";
 
-import { config as dotenvConfig } from "dotenv";
 import type { ConfigPaths } from "#types/config.d.ts";
 import loadConfig from "./util/loadConfig";
 
 const program = new Command();
 
-import { access } from "node:fs/promises";
 import { resolve } from "node:path";
-
-import { spawn } from "node:child_process";
 
 /**
  * The paths to the config files in the repo
@@ -22,7 +18,6 @@ import { spawn } from "node:child_process";
 const CONFIG_PATHS: ConfigPaths = {
 	main: resolve(import.meta.dirname, "../config.toml"),
 	example: resolve(import.meta.dirname, "../config.example.toml"),
-	dotenv: resolve(import.meta.dirname, "../.env"),
 };
 
 program

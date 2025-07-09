@@ -19,5 +19,4 @@ export type ParsedTomlConfig = z.infer<typeof ParsedTomlConfigSchema>;
 export interface ConfigPaths {
 	main: string;
 	example: string;
-	dotenv: string;
 }

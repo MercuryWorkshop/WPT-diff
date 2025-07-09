@@ -184,7 +184,11 @@ export default class TestRunner {
 		if (updateManifestRes.isErr()) return nErrAsync(updateManifestRes.error);
 		const updateManifest = updateManifestRes.value;
 		const testTimeoutMap = await this.getTestTimeoutMap(updateManifest);
-
+		console.log(
+			testTimeoutMap.get(
+				"/FileAPI/BlobURL/cross-partition-worker-creation.https.html",
+			),
+		);
 		testPaths = this.filterTests(testPaths, testTimeoutMap);
 
 		// Track test run timing
@@ -297,6 +301,7 @@ export default class TestRunner {
 					testTimeoutMap.get(currentTestPath) || DEFAULT_WPT_TIMEOUT;
 				// This is only needed if the timeout is not already "long" (`60` seconds)
 				// @see https://web-platform-tests.org/writing-tests/testharness-api.html#harness-timeout
+				/*
 				if (wptUpdateManifestTimeout === 60) {
 					const timeoutSymbol = Symbol("timeout");
 					const metaTimeoutLocator = page.locator(
@@ -316,6 +321,7 @@ export default class TestRunner {
 						);
 					}
 				}
+				*/
 
 				// Race between test completion and timeout
 				const timeoutPromise = new Promise<"timeout">((resolve) => {
@@ -440,16 +446,14 @@ export default class TestRunner {
 		for (const [testPath, testInfo] of Object.values(
 			updateManifest.items.testharness,
 		).map((testArray) => testArray[0])) {
-			if (!("timeout" in testInfo)) {
-				timeoutMap.set(testPath, 10);
-			} else {
-				if (testInfo.timeout === "long") {
-					timeoutMap.set(testPath, 60);
-				}
-				timeoutMap.set(testPath, 10);
+			console.log(testPath, testInfo)
+			if (testInfo?.timeout === "long") {
+				timeoutMap.set(`/${testPath}`, 60);
 			}
+			timeoutMap.set(`/${testPath}`, 10);
 		}
 		/*
+		commenting this out because we dont have support for reftests or manual
 		for (const [testPath, refTest, testInfo] of Object.values(
 			updateManifest.items.reftest,
 		).map((testArray) => testArray[0])) {
@@ -471,14 +475,13 @@ export default class TestRunner {
 			(testArray) => testArray[0],
 		))
 			timeoutMap.set(testPath, 10);
-		*/	
+		*/
 
 		return timeoutMap as Map<string, 10 | 60>;
 	}
 
-	private async getWPTUpdateManifest(): ResultAsync<
-		WPT.UpdateManifest.Manifest,
-		string
+	private async getWPTUpdateManifest(): Promise<
+		ResultAsync<WPT.UpdateManifest.Manifest, string>
 	> {
 		const { logger: log } = this.options;
 
@@ -494,9 +497,8 @@ export default class TestRunner {
 			}),
 			(err) => `Failed to get the WPT update manifest: ${err}`,
 		);
-		if (updateManifestRespRes.isErr()) {
-			return updateManifestRespRes;
-		}
+		if (updateManifestRespRes.isErr())
+			return nErrAsync(updateManifestRespRes.error);
 		const updateManifest = await updateManifestRespRes.value.json();
 
 		let validateWPTUpdateManifest:
@@ -544,8 +546,7 @@ export default class TestRunner {
 		if (this.options.maxTests && typeof this.options.maxTests === "number")
 			testPaths = testPaths.slice(0, this.options.maxTests);
 		// Only use tests we can run in our runner
-		// timeout map is broken rn
-		//testPaths = testPaths.filter((test) => testTimeoutMap.has(test.test));
+		testPaths = testPaths.filter((test) => testTimeoutMap.has(test.test));
 		return testPaths;
 	}
 

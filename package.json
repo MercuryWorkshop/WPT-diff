@@ -11,17 +11,14 @@
     "fmt": "biome format --write .",
     "prepare": "ts-patch install",
     "generate:validators": "typia generate --input src/util/validators --output generatedValidators",
-    "test": "playwright test",
-    "test:ui": "playwright test --ui",
-    "test:debug": "playwright test --debug",
     "submodule:bump": "git submodule update --remote --merge"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "@biomejs/biome": "^2.1.0",
-    "@types/node": "^24.0.7",
+    "@biomejs/biome": "^2.1.1",
+    "@types/node": "^24.0.12",
     "@types/supports-color": "^10.0.0",
     "ts-node": "^10.9.2",
     "ts-patch": "^3.3.0",
@@ -30,18 +27,17 @@
   },
   "dependencies": {
     "@opentf/cli-pbar": "^0.7.2",
-    "@playwright/test": "^1.53.1",
+    "@playwright/test": "^1.53.2",
     "chalk": "^5.4.1",
     "commander": "^14.0.0",
     "console-with-style": "^1.1.0",
-    "dotenv": "^17.0.0",
     "neverthrow": "^8.2.0",
     "ora": "^8.2.0",
-    "playwright": "^1.53.1",
-    "smol-toml": "^1.4.0",
+    "playwright": "^1.53.2",
+    "smol-toml": "^1.4.1",
     "tslog": "^4.9.3",
     "typia": "^9.4.0",
-    "zod": "^3.25.67"
+    "zod": "^4.0.0"
   },
   "imports": {
     "#types/*": "./types/*",
