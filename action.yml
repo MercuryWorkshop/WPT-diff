@@ -1,4 +1,3 @@
-        working-directory: ./wpt-diff/
 name: 'WPT-diff Test Runner'
 description: 'Run Web Platform Tests against a proxy and collect failed results'
 author: 'MercuryWorkshop'
