@@ -116,7 +116,7 @@ runs:
       with:
         working-directory: '${{ inputs.location }}'
         run: |
-          xvfb-run pnpm start --report wpt-report.json
+          pnpm start --report wpt-report.json
 
     - name: Stop WPT server
       shell: bash
