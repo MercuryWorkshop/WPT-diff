@@ -98,12 +98,12 @@ runs:
       run: |
         cat > config.toml << EOF
         [debug]
-        debug = ${{ inputs.debug }}
-        verbose = ${{ inputs.verbose }}
+        debug = "${{ inputs.debug }}"
+        verbose = "${{ inputs.verbose }}"
 
         [wpt]
-        max_tests = ${{ inputs.wpt_max_tests }}
-        under_proxy = ${{ inputs.under_proxy }}
+        max_tests = "${{ inputs.wpt_max_tests }}"
+        under_proxy = "${{ inputs.under_proxy }}"
 
         [wpt.urls]
         proxy_base_url = "${{ inputs.proxy_base_url }}"
