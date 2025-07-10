@@ -1,3 +1,4 @@
+        working-directory: ./wpt-diff/
 name: 'WPT-diff Test Runner'
 description: 'Run Web Platform Tests against a proxy and collect failed results'
 author: 'MercuryWorkshop'
@@ -133,7 +134,7 @@ runs:
       shell: bash
       run: |
         # Ensure we're in the WPT-diff directory
-        if [ -f "package.json" ] && grep -q "wpt-diff" package.json; then
+        if [ -f "package.json" ] && grep '"name": "wpt"' package.json; then
           pnpm start --report wpt-report.json || true
         else
           echo "Error: Not in WPT-diff directory"
