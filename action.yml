@@ -62,13 +62,12 @@ runs:
           echo "Warning: Proxy directory ${{ inputs.proxyName }} not found and no repo URL provided"
         fi
 
-    - name: Switch WPT to latest
-      shell: bash
-      run: |
-        cd wpt
-        git fetch origin
-        git reset --hard origin/master
-        cd ..
+    - name: Checkout WPT
+      uses: actions/checkout@v4
+      with:
+        repository: web-platform-tests/wpt
+        path: wpt
+        submodules: recursive
 
     - name: Setup pnpm
       uses: pnpm/action-setup@v4
