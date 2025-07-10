@@ -133,6 +133,7 @@ runs:
       shell: bash
       run: |
         # Ensure we're in the WPT-diff directory
+        pwd; ls -la;
         if [ -f "package.json" ] && grep '"name": "wpt"' package.json; then
           pnpm start --report wpt-report.json || true
         else
