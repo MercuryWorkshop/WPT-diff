@@ -2,14 +2,17 @@ name: 'WPT-diff Test Runner'
 description: 'Run Web Platform Tests against a proxy and collect failed results'
 author: 'MercuryWorkshop'
 inputs:
-  proxyName:
-    description: 'Name of the proxy being tested'
+  location:
+    description: 'Action clone location'
     required: true
-    default: 'scramjet'
-  proxyRepo:
-    description: 'Git repository URL for the proxy (if not using scramjet submodule)'
+  run_js_setup:
+    description: 'Whether to run node/pnpm setup'
     required: false
-    default: ''
+    default: true
+  artifact_name:
+    description: 'Report artifact name'
+    required: false
+    default: "wpt-report"
   debug:
     description: ''
     required: false
@@ -42,40 +45,22 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    - name: Checkout with submodules
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
-
-    - name: Setup latest proxy repository
-      shell: bash
-      run: |
-        if [ -n "${{ inputs.proxyRepo }}" ]; then
-          rm -rf ${{ inputs.proxyName }}
-          git clone ${{ inputs.proxyRepo }} ${{ inputs.proxyName }}
-        elif [ -d "${{ inputs.proxyName }}" ]; then
-          cd ${{ inputs.proxyName }}
-          git submodule update --init --recursive
-          git pull origin main || git pull origin master || true
-          cd ..
-        else
-          echo "Warning: Proxy directory ${{ inputs.proxyName }} not found and no repo URL provided"
-        fi
-
     - name: Checkout WPT
       uses: actions/checkout@v4
       with:
         repository: web-platform-tests/wpt
-        path: wpt
+        path: '${{ inputs.location }}/wpt'
         submodules: recursive
 
     - name: Setup pnpm
       uses: pnpm/action-setup@v4
+      if: '${{ inputs.run_js_setup }}'
       with:
         version: latest
 
     - name: Setup Node.js
       uses: actions/setup-node@v4
+      if: '${{ inputs.run_js_setup }}'
       with:
         node-version: latest
         cache: pnpm
@@ -87,32 +72,29 @@ runs:
 
     - name: Setup WPT hosts
       shell: bash
+      working-directory: '${{ inputs.location }}/wpt'
       run: |
-        cd wpt
         ./wpt make-hosts-file | sudo tee -a /etc/hosts
-        cd ..
 
     - name: Install WPT-diff dependencies
       shell: bash
+      working-directory: '${{ inputs.location }}'
       run: |
         pnpm install
-        if [ -d "${{ inputs.proxyName }}" ]; then
-          cd ${{ inputs.proxyName }} && pnpm install && cd ..
-        fi
         pnpm exec playwright install chromium
 
     - name: Start WPT server
       shell: bash
+      working-directory: '${{ inputs.location }}/wpt'
       run: |
-        cd wpt
         ./wpt serve --no-h2 &
         WPT_PID=$!
         echo "WPT_PID=$WPT_PID" >> $GITHUB_ENV
         sleep 10
-        cd ..
 
     - name: Create WPT-Diff config
       shell: bash
+      working-directory: '${{ inputs.location }}'
       run: |
         cat > config.toml << EOF
         [debug]
@@ -131,6 +113,7 @@ runs:
 
     - name: Run WPT-Diff tests
       shell: bash
+      working-directory: '${{ inputs.location }}'
       run: |
         # Ensure we're in the WPT-diff directory
         pwd; ls -la;
@@ -143,6 +126,7 @@ runs:
 
     - name: Stop WPT server
       shell: bash
+      working-directory: '${{ inputs.location }}'
       run: |
         if [ ! -z "$WPT_PID" ]; then
           kill $WPT_PID || true
@@ -150,7 +134,6 @@ runs:
 
     - name: Upload WPT standard report
       uses: actions/upload-artifact@v4
-      if: always()
       with:
-        name: wpt-report-${{ inputs.proxyName }}
-        path: wpt-report.json
+        name: '${{ inputs.artifact_name }}'
+        path: '${{ inputs.location }}/wpt-report.json'
