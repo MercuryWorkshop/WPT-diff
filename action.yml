@@ -112,10 +112,11 @@ runs:
         EOF
 
     - name: Run WPT-Diff tests
-      shell: bash
-      working-directory: '${{ inputs.location }}'
-      run: |
-        pnpm start --report wpt-report.json
+      uses: coactions/setup-xvfb@v1
+      with:
+        working-directory: '${{ inputs.location }}'
+        run: |
+          xvfb-run pnpm start --report wpt-report.json
 
     - name: Stop WPT server
       shell: bash
