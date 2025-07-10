@@ -1,5 +1,6 @@
 name: 'WPT-diff Test Runner'
 description: 'Run Web Platform Tests against a proxy and collect failed results'
+author: 'MercuryWorkshop'
 inputs:
   proxyName:
     description: 'Name of the proxy being tested'
@@ -9,10 +10,22 @@ inputs:
     description: 'Git repository URL for the proxy (if not using scramjet submodule)'
     required: false
     default: ''
+  debug:
+    description: ''
+    required: false
+    default: false
+  verbose:
+    description: ''
+    required: false
+    default: false
   wpt_max_tests:
     description: 'Maximum number of WPT tests to run'
     required: false
     default: 'all'
+  under_proxy:
+    description: 'Run tests under proxy'
+    required: false
+    default: true
   wpt_tests_base_url:
     description: 'Base URL for WPT tests'
     required: false
@@ -21,10 +34,6 @@ inputs:
     description: 'Base URL for WPT API'
     required: false
     default: 'https://wpt.fyi'
-  under_proxy:
-    description: 'Run tests under proxy'
-    required: false
-    default: true
 
 runs:
   using: 'composite'
@@ -103,9 +112,14 @@ runs:
       shell: bash
       run: |
         cat > config.toml << EOF
+        [debug]
+        debug = ${{ inputs.debug }}
+        verbose = ${{ inputs.verbose }}
+
         [wpt]
         max_tests = ${{ inputs.wpt_max_tests }}
         under_proxy = ${{ inputs.under_proxy }}
+
         [wpt.urls]
         tests_base_url = "${{ inputs.wpt_tests_base_url }}"
         api_base_url = "${{ inputs.wpt_api_base_url }}"
@@ -116,7 +130,7 @@ runs:
       run: |
         # Ensure we're in the WPT-diff directory
         if [ -f "package.json" ] && grep -q "wpt-diff" package.json; then
-          pnpm run start -- --output-failed failed-tests.json --report wpt-report.json || true
+          pnpm start --report wpt-report.json || true
         else
           echo "Error: Not in WPT-diff directory"
           exit 1
@@ -128,32 +142,6 @@ runs:
         if [ ! -z "$WPT_PID" ]; then
           kill $WPT_PID || true
         fi
-
-    - name: Process results
-      shell: bash
-      run: |
-        if [ -f failed-tests.json ]; then
-          node -e "
-          const fs = require('fs');
-          const failed = JSON.parse(fs.readFileSync('failed-tests.json', 'utf8'));
-
-          const summary = {
-            proxy: '${{ inputs.proxyName }}',
-            totalFailed: failed.length,
-            failedTests: failed
-          };
-
-          fs.writeFileSync('test-results.json', JSON.stringify(summary, null, 2));
-          "
-        else
-          echo '{"proxy": "${{ inputs.proxyName }}", "totalFailed": 0, "failedTests": []}' > test-results.json
-        fi
-
-    - name: Upload WPT-diff failed tests
-      uses: actions/upload-artifact@v4
-      with:
-        name: wpt-diff-failed-${{ inputs.proxyName }}
-        path: test-results.json
 
     - name: Upload WPT standard report
       uses: actions/upload-artifact@v4

@@ -184,11 +184,6 @@ export default class TestRunner {
 		if (updateManifestRes.isErr()) return nErrAsync(updateManifestRes.error);
 		const updateManifest = updateManifestRes.value;
 		const testTimeoutMap = await this.getTestTimeoutMap(updateManifest);
-		console.log(
-			testTimeoutMap.get(
-				"/FileAPI/BlobURL/cross-partition-worker-creation.https.html",
-			),
-		);
 		testPaths = this.filterTests(testPaths, testTimeoutMap);
 
 		// Track test run timing
@@ -446,9 +441,9 @@ export default class TestRunner {
 		for (const [testPath, testInfo] of Object.values(
 			updateManifest.items.testharness,
 		).map((testArray) => testArray[0])) {
-			console.log(testPath, testInfo)
 			if (testInfo?.timeout === "long") {
 				timeoutMap.set(`/${testPath}`, 60);
+				continue;
 			}
 			timeoutMap.set(`/${testPath}`, 10);
 		}
@@ -489,7 +484,7 @@ export default class TestRunner {
 			"Fetching WPT update manifest for determining timeout settings per-test",
 		);
 		this.initialized = true;
-		const wptUpdateManifestURL = new URL(this.options.wptUrls.testsBaseUrl);
+		const wptUpdateManifestURL = new URL(this.options.wptUrls.test);
 		wptUpdateManifestURL.pathname = WPT_UPDATE_MANIFEST_ENDPOINT;
 		const updateManifestRespRes = await ResultAsync.fromPromise(
 			fetch(wptUpdateManifestURL, {

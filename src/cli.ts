@@ -62,8 +62,7 @@ const testRunner = new TestRunner({
 	logger: log,
 	wptUrls: {
 		test: config.wpt.urls.tests_base_url,
-		api: config.wpt.urls.api_base_url,
-		testsBaseUrl: config.wpt.urls.tests_base_url,
+		api: config.wpt.urls.api_base_url
 	},
 	maxTests: config.wpt.max_tests,
 	underProxy: config.wpt.under_proxy,
