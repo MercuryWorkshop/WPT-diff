@@ -12,3 +12,7 @@ under_proxy = true
 proxy_base_url = "http://localhost:1337"
 tests_base_url = "http://web-platform.test:8000"
 api_base_url = "https://wpt.fyi"
+
+[ci]
+# Number of tests to complete before saving checkpoint (default: 100)
+# checkpoint_interval = 100

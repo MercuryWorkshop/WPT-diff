@@ -41,6 +41,26 @@ inputs:
     description: 'Base URL for WPT API'
     required: false
     default: 'https://wpt.fyi'
+  enable_batching:
+    description: 'Enable test batching for long-running tests'
+    required: false
+    default: 'false'
+  checkpoint_file:
+    description: 'Checkpoint file path for saving/resuming test progress (only used if batching is enabled)'
+    required: false
+    default: ''
+  resume_from:
+    description: 'Resume from a previous checkpoint file (only used if batching is enabled)'
+    required: false
+    default: ''
+  job_index:
+    description: 'Current job index for splitting tests (0-based, only used if batching is enabled)'
+    required: false
+    default: '0'
+  total_jobs:
+    description: 'Total number of jobs for splitting tests (only used if batching is enabled)'
+    required: false
+    default: '1'
 
 runs:
   using: 'composite'
@@ -58,12 +78,13 @@ runs:
       with:
         version: latest
 
-    - name: Setup Node.js
+    - name: Setup Node.js with cache
       uses: actions/setup-node@v4
       if: '${{ inputs.run_js_setup }}'
       with:
         node-version: latest
-        cache: pnpm
+        cache: 'pnpm'
+        cache-dependency-path: '${{ inputs.location }}/pnpm-lock.yaml'
 
     - name: Setup Python
       uses: actions/setup-python@v5
@@ -83,6 +104,19 @@ runs:
         pnpm install
         pnpm exec playwright install chromium
 
+    - name: Generate validators
+      shell: bash
+      working-directory: '${{ inputs.location }}'
+      run: |
+        pnpm generate:validators
+
+    - name: Download previous checkpoint if resuming
+      if: ${{ inputs.enable_batching == 'true' && inputs.resume_from != '' }}
+      uses: actions/download-artifact@v4
+      with:
+        name: '${{ inputs.resume_from }}'
+        path: '${{ inputs.location }}'
+
     - name: Start WPT server
       shell: bash
       working-directory: '${{ inputs.location }}/wpt'
@@ -96,13 +130,19 @@ runs:
       shell: bash
       working-directory: '${{ inputs.location }}'
       run: |
+        if [ "${{ inputs.wpt_max_tests }}" = "all" ]; then
+          MAX_TESTS='"all"'
+        else
+          MAX_TESTS="${{ inputs.wpt_max_tests }}"
+        fi
+        
         cat > config.toml << EOF
         [debug]
         debug = ${{ inputs.debug }}
         verbose = ${{ inputs.verbose }}
 
         [wpt]
-        max_tests = "${{ inputs.wpt_max_tests }}"
+        max_tests = $MAX_TESTS
         under_proxy = ${{ inputs.under_proxy }}
 
         [wpt.urls]
@@ -116,7 +156,21 @@ runs:
       with:
         working-directory: '${{ inputs.location }}'
         run: |
-          pnpm start --report wpt-report.json
+          export CI=true
+          
+          CMD="pnpm start --report wpt-report.json"
+          
+          if [ "${{ inputs.enable_batching }}" = "true" ]; then
+            if [ "${{ inputs.checkpoint_file }}" != "" ]; then
+              CMD="$CMD --checkpoint-file ${{ inputs.checkpoint_file }}"
+            fi
+            
+            if [ "${{ inputs.resume_from }}" != "" ] && [ -f "${{ inputs.resume_from }}" ]; then
+              CMD="$CMD --resume-from ${{ inputs.resume_from }}"
+            fi
+          fi
+
+          $CMD
 
     - name: Stop WPT server
       shell: bash
@@ -131,3 +185,10 @@ runs:
       with:
         name: '${{ inputs.artifact_name }}'
         path: '${{ inputs.location }}/wpt-report.json'
+
+    - name: Upload checkpoint file if created
+      if: ${{ inputs.enable_batching == 'true' && inputs.checkpoint_file != '' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: 'checkpoint-${{ inputs.job_index }}'
+        path: '${{ inputs.location }}/${{ inputs.checkpoint_file }}'

@@ -36,6 +36,13 @@ program.option(
 	"generate a standardized test report in JSON format (to stdout if no file specified)",
 );
 
+program.option(
+	"-c, --checkpoint-file <file>",
+	"save test progress to checkpoint file for resuming later",
+);
+
+program.option("--resume-from <file>", "resume testing from a checkpoint file");
+
 program.argument("[scope]", "The scope of tests to run. (optional)");
 
 program.parse();
@@ -50,6 +57,14 @@ const config = configRes.value;
 const debugMode = config.debug.debug;
 const verboseMode = config.debug.verbose;
 
+// Set environment variables for logger if not already set
+if (!process.env.DEBUG) {
+	process.env.DEBUG = String(debugMode);
+}
+if (!process.env.VERBOSE) {
+	process.env.VERBOSE = String(verboseMode);
+}
+
 log.info(
 	`About to run the tests with debug mode ${debugMode ? "enabled" : "disabled"}`,
 );
@@ -57,22 +72,27 @@ log.info(
 	`About to run the tests with verbose mode ${verboseMode ? "enabled" : "disabled"}`,
 );
 
-const testRunner = new TestRunner({
-	logger: log,
-	wptUrls: {
-		proxy: config.wpt.urls.proxy_base_url,
-		test: config.wpt.urls.tests_base_url,
-		api: config.wpt.urls.api_base_url
+const testRunner = new TestRunner(
+	{
+		logger: log,
+		wptUrls: {
+			proxy: config.wpt.urls.proxy_base_url,
+			test: config.wpt.urls.tests_base_url,
+			api: config.wpt.urls.api_base_url,
+		},
+		maxTests: config.wpt.max_tests,
+		underProxy: config.wpt.under_proxy,
+		scope: program.args[0],
+		outputFailed: programOptions.outputFailed,
+		report: programOptions.report,
+		debug: debugMode,
+		verbose: verboseMode,
+		silent: !verboseMode,
+		checkpointFile: programOptions.checkpointFile,
+		resumeFrom: programOptions.resumeFrom,
 	},
-	maxTests: config.wpt.max_tests,
-	underProxy: config.wpt.under_proxy,
-	scope: program.args[0],
-	outputFailed: programOptions.outputFailed,
-	report: programOptions.report,
-	debug: debugMode,
-	verbose: verboseMode,
-	silent: !verboseMode,
-});
+	config.ci?.checkpoint_interval,
+);
 
 const startTestRes = await testRunner.startTest();
 if (startTestRes.isErr())

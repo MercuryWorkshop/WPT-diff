@@ -11,53 +11,57 @@ export namespace WPT {
 	}
 
 	export namespace UpdateManifest {
-		type TestHarness = {
-			[key: string]: [
+		type TestHarnessItem = [
+			/**
+			 * Test URL (without leading slash)
+			 */
+			string,
+			{
 				/**
-				 * Test path
+				 * `null` or `timeout` being omitted entirely means default, which is 10 seconds
+				 * `long` means 60 seconds
 				 */
-				string,
-				{
-					/**
-					 * `null` or `timeout` being omitted entirely means default, which is 10 seconds
-					 * `long` means 60 seconds
-					 */
-					timeout?: null | "long";
-				},
-			];
+				timeout?: null | "long";
+			},
+		];
+
+		type RefTestItem = [
+			/**
+			 * Test URL (without leading slash)
+			 */
+			string,
+			/**
+			 * Array of reference comparisons
+			 */
+			[string, "==" | "!="][],
+			{
+				/**
+				 * `null` or `timeout` being omitted entirely means default, which is 10 seconds
+				 * `long` means 60 seconds
+				 */
+				timeout?: null | "long";
+			},
+		];
+
+		type ManualTestItem = [
+			/**
+			 * Test URL (without leading slash)
+			 */
+			string,
+			/**
+			 * Empty object for manual tests
+			 */
+			{},
+		];
+
+		type TestHarness = {
+			[path: string]: TestHarnessItem[];
 		};
 		type RefTest = {
-			[key: string]: [
-				/**
-				 * Test path
-				 */
-				string,
-				[
-					[
-						/**
-						 * Reference test path
-						 */
-						string,
-						"==",
-					],
-				],
-				{
-					/**
-					 * `null` or `timeout` being omitted entirely means default, which is 10 seconds
-					 * `long` means 60 seconds
-					 */
-					timeout?: null | "long";
-				},
-			];
+			[path: string]: RefTestItem[];
 		};
 		type ManualTest = {
-			[key: string]: [
-				/**
-				 * Test path
-				 */
-				string,
-				{},
-			];
+			[path: string]: ManualTestItem[];
 		};
 
 		export interface Manifest {
@@ -67,7 +71,7 @@ export namespace WPT {
 				manual: ManualTest;
 			};
 			/** Base path for the WPT tests on the API URI */
-			urlBase: string;
+			urlBase?: string;
 		}
 	}
 }

@@ -1,25 +1,18 @@
 # WPT-diff
 
----
+WPT-diff is a test runner for [web-platform-tests](https://github.com/web-platform-tests/wpt), which features its own test harness
 
-WPT-diff is a [web-platform-tests](https://github.com/web-platform-tests/wpt) runner meant for interception proxies to test against to ensure proper API interceptor compatibility.
+## How to run
 
-## Development
+1. Ensure you have [pnpm](https://pnpm.io/installation) installed
+2. Clone the git repository with `git clone --recursive https://github.com/MercuryWorkshop/wpt-diff`
+3. Install the dependencies with `pnpm i`
+4. Create a config. You can use the example with `mv config.example.toml config.toml`.
+5. Run `pnpm generate:validators` to generate type validations (optional)
+6. Run the CLI `pnpm start`
 
-### Dependencies
+## I want to get test results for my Web Proxy
 
--   Recent versions of `node.js` and `pnpm`
-
-#### Setting up
-
--   Clone the repository with `git clone --recursive https://github.com/MercuryWorkshop/wpt-diff`
--   Install the dependencies with `pnpm i`
-
-
-### Running WPT-diff Locally
-
-You can run WPT-diff locally with the command
-
-```sh
-pnpm start
-```
+Use the action at [action.yml](./action.yml)
+You could also [see the Scramjet Workflow](https://github.com/MercuryWorkshop/scramjet/blob/main/.github/workflows/wpt_diff_epoch.yml) that uses this action for an example
+You need to provide a script with the same API as [setupPage](https://github.com/MercuryWorkshop/scramjet/blob/main/tests/util/setupPage.ts) from [Scramjet](https://scramjet.mercurywork.shop)

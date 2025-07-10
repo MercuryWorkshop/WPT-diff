@@ -15,4 +15,6 @@ export interface TestOptions {
 	debug: boolean;
 	verbose: boolean;
 	silent: boolean;
+	checkpointFile?: string;
+	resumeFrom?: string;
 }

@@ -34,6 +34,7 @@
     "neverthrow": "^8.2.0",
     "ora": "^8.2.0",
     "playwright": "^1.53.2",
+    "simple-git": "^3.28.0",
     "smol-toml": "^1.4.1",
     "tslog": "^4.9.3",
     "typia": "^9.4.0",

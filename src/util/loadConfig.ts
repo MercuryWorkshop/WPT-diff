@@ -36,9 +36,15 @@ export default async function loadConfig(
 	const parseResult = ParsedTomlConfigSchema.safeParse(parsedToml);
 
 	if (!parseResult.success) {
-		const err = parseResult.error.errors
-			.map((err) => `${err.path.join(".")}: expected ${err.message}`)
-			.join(", ");
+		const issues = parseResult.error?.issues || [];
+		const err =
+			issues.length > 0
+				? issues
+						.map(
+							(issue) => `${issue.path.join(".")}: expected ${issue.message}`,
+						)
+						.join(", ")
+				: "Unknown validation error";
 
 		return nErrAsync(
 			`Failed to validate the 'config.toml' that you provided: ${err}`,

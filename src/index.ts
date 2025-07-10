@@ -21,7 +21,9 @@ import { WPT } from "#types/wpt.ts";
 import { ProgressReporter } from "#util/cli/progressReporter.ts";
 import forwardConsole from "#util/forwardConsole.ts";
 import createTestIterator from "#util/testIterator.ts";
-// Dynamic import for validator will be done in getWPTUpdateManifest method
+import { CheckpointManager } from "#util/CheckpointManager.ts";
+import { performHealthChecks } from "#util/healthChecks.ts";
+import { getWPTTestPaths } from "#util/getTestPaths.ts";
 import { enterNewUrl } from "./page/enterNewUrl.ts";
 import { setupPage } from "./page/setupPage.ts";
 import setupFirstTimeSW from "./page/setupFirstTimeSW.ts";
@@ -30,16 +32,20 @@ import createTestHarness from "./routeInterceptors/testHarness.ts";
 import initTestHarnessInterceptor from "./routeInterceptors/testHarnessSW.ts";
 
 const DEFAULT_WPT_TIMEOUT = 10;
-const WPT_UPDATE_MANIFEST_ENDPOINT = "/tools/runner/update_manifest.py";
-const WPT_RUNS_ENDPOINT =
-	"/api/run?label=master&label=stable&product=chrome&aligned";
 
 export default class TestRunner {
 	private initialized = false;
 	private options: TestOptions;
+	private checkpointManager: CheckpointManager;
+	private checkpointInterval: number;
 
-	constructor(options: TestOptions) {
+	constructor(options: TestOptions, checkpointInterval?: number) {
 		this.options = options;
+		this.checkpointInterval = checkpointInterval || 100;
+		this.checkpointManager = new CheckpointManager(
+			options,
+			this.checkpointInterval,
+		);
 	}
 
 	static async generateWPTReport(
@@ -73,14 +79,14 @@ export default class TestRunner {
 		}
 
 		// Default to Chrome results if we don't have results for a test or subtest
-		const results: WPTReportTest[] = [];
+		const chromeReportTestResults: WPTReportTest[] = [];
 		if (chromeReportData?.results) {
 			for (const chromeTest of chromeReportData.results) {
 				if (proxyTestsMap.has(chromeTest.test)) {
 					const proxyTest = proxyTestsMap.get(chromeTest.test);
-					if (proxyTest) results.push(proxyTest);
+					if (proxyTest) chromeReportTestResults.push(proxyTest);
 				} else {
-					results.push(chromeTest);
+					chromeReportTestResults.push(chromeTest);
 				}
 			}
 
@@ -90,11 +96,11 @@ export default class TestRunner {
 						(chromeTest) => chromeTest.test === testPath,
 					)
 				) {
-					results.push(testReport);
+					chromeReportTestResults.push(testReport);
 				}
 			}
 		} else {
-			results.push(...proxyTestsMap.values());
+			chromeReportTestResults.push(...proxyTestsMap.values());
 		}
 
 		const report: WPTReport = {
@@ -106,7 +112,7 @@ export default class TestRunner {
 				processor: os.arch(),
 			}),
 			time_start: timeStart,
-			results,
+			results: chromeReportTestResults,
 			time_end: timeEnd,
 		};
 
@@ -115,6 +121,7 @@ export default class TestRunner {
 
 	/**
 	 * Starts the test for WPT-diff
+	 *
 	 * @param headless Runs the browser in headless mode if enabled (only useful for debugging)
 	 * @param maxTests The max number of tests to execute
 	 * @param silent Enables verbose logging
@@ -131,70 +138,93 @@ export default class TestRunner {
 	> {
 		const { logger: log } = this.options;
 
-		const getRunsApi = this.options.wptUrls.api + WPT_RUNS_ENDPOINT;
-		log.debug(
-			`Fetching latest Chrome Linux results from the WPT API ${getRunsApi}`,
+		const healthCheckResult = await performHealthChecks(
+			this.options.wptUrls.test,
+			this.options.underProxy ? this.options.wptUrls.proxy : null,
+			this.options.underProxy,
+			log,
+			this.options.debug,
 		);
-		const latestChromeRespRes = await ResultAsync.fromPromise(
-			fetch(getRunsApi),
-			(err) => `Failed to fetch WPT Results: ${err}`,
-		);
-		if (latestChromeRespRes.isErr())
-			return nErrAsync(latestChromeRespRes.error);
-		const latestChrome = latestChromeRespRes.value;
+		if (healthCheckResult.isErr()) {
+			return nErrAsync(healthCheckResult.error);
+		}
 
-		let chromeData: ChromeWPTApiResponse;
-		try {
-			chromeData = (await latestChrome.json()) as ChromeWPTApiResponse;
-		} catch (rawErr) {
-			const err = rawErr instanceof Error ? rawErr.message : String(rawErr);
-			return nErrAsync(`Failed to parse the WPT Results as JSON: ${err}`);
+		// Fetch Chrome test paths and report data
+		const chromeDataResult = await getWPTTestPaths({
+			wptUrls: this.options.wptUrls,
+			debug: this.options.debug,
+			logger: log,
+		});
+		if (chromeDataResult.isErr()) {
+			return nErrAsync(chromeDataResult.error);
 		}
-		if (!("raw_results_url" in chromeData))
-			return nErrAsync(
-				"Failed to find the raw results URL as expected for the latest Chrome results",
-			);
-		const chromeReportRes = await ResultAsync.fromPromise(
-			fetch(chromeData.raw_results_url),
-			() =>
-				`Failed to get the fetch the raw results URL found in the latest Chrome Linux run ${chromeData.raw_results_url}`,
-		);
-		if (chromeReportRes.isErr()) return nErrAsync(chromeReportRes.error);
-		const chromeReport = chromeReportRes.value;
-		let reportData: ChromeWPTReport;
-		try {
-			reportData = (await chromeReport.json()) as ChromeWPTReport;
-		} catch (rawErr) {
-			const err = rawErr instanceof Error ? rawErr.message : String(rawErr);
-			return nErrAsync(
-				`Failed to parse the WPT Report for the latest Chrome Linux run: ${err}`,
-			);
-		}
-		let testPaths: {
-			test: string;
-		}[] = reportData.results;
+		const { testPaths: rawTestPaths, chromeReportData: reportData } =
+			chromeDataResult.value;
+		let paths = rawTestPaths;
 
 		// Store Chrome baseline data for comparison if outputFailed is enabled
 		// TODO: Implement baseline comparison when outputFailed is enabled
 
 		// Store full Chrome report data if report generation is enabled
 		const chromeReportData = this.options.report ? reportData : null;
+		this.checkpointManager.setChromeReportData(chromeReportData);
 
 		const updateManifestRes = await this.getWPTUpdateManifest();
 		if (updateManifestRes.isErr()) return nErrAsync(updateManifestRes.error);
 		const updateManifest = updateManifestRes.value;
 		const testTimeoutMap = await this.getTestTimeoutMap(updateManifest);
-		testPaths = this.filterTests(testPaths, testTimeoutMap);
+		paths = this.filterTests(paths, testTimeoutMap);
 
-		// Track test run timing
 		const timeStart = Date.now();
 
+		const initResult = await this.checkpointManager.initialize(
+			paths.length,
+			timeStart,
+		);
+		if (initResult.isErr()) {
+			return nErrAsync(initResult.error);
+		}
+
+		const completed = this.checkpointManager.getCompletedTests();
+		if (completed.length >= paths.length) {
+			log.info("Batch not needed (all tests already completed)");
+			return nOkAsync({
+				results: {
+					pass: 0,
+					fail: 0,
+					other: 0,
+				},
+			});
+		}
+
+		const remaining = paths.filter(
+			(test) => !this.checkpointManager.isTestCompleted(test.test),
+		);
+
+		if (remaining.length === 0) {
+			log.info("Batch not needed (no remaining tests)");
+			return nOkAsync({
+				results: {
+					pass: 0,
+					fail: 0,
+					other: 0,
+				},
+			});
+		}
+
+		log.info(
+			`Resuming with ${remaining.length} remaining tests (${completed.length} already completed)`,
+		);
+		paths = remaining;
+
 		const browser = await chromium.launch({
-			headless: !this.options.verbose,
+			headless: process.env.CI === "true" || !this.options.debug,
 		});
 
 		const browserCtx = await browser.newContext({
-			baseURL: this.options.underProxy ? this.options.wptUrls.proxy : this.options.wptUrls.test,
+			baseURL: this.options.underProxy
+				? this.options.wptUrls.proxy
+				: this.options.wptUrls.test,
 			ignoreHTTPSErrors: true,
 		});
 
@@ -206,37 +236,36 @@ export default class TestRunner {
 			log,
 		});
 
-		// Collect the results
-		const testResults = new Map<string, WPTTestResult[]>();
+		const testResults = this.checkpointManager.getTestResults();
 		let currentTestPath = "";
 		let currentTestResolve: (() => void) | null = null;
 
-		const wptCollector = new WptCollector({
+		const collector = new WptCollector({
 			mainPage: page,
 			underProxy: this.options.underProxy,
 			testResults: testResults,
 			log,
 		});
-		await wptCollector.start();
+		await collector.start();
 
 		if (!this.options.underProxy)
 			await page.route(
 				`${this.options.wptUrls.test}/resources/testharness.js`,
-				createTestHarness(wptCollector.getBodyAddition(), log),
+				createTestHarness(collector.getBodyAddition(), log),
 			);
 
 		if (!this.options.silent) {
 			const underProxyText = this.options.underProxy ? " under a proxy" : "";
 			log.info(
-				`Running ${testPaths.length} test${
-					testPaths.length === 1 ? "" : "s"
+				`Running ${paths.length} test${
+					paths.length === 1 ? "" : "s"
 				}${underProxyText}`,
 			);
 		}
 
 		const progressReporter = new ProgressReporter({
 			verbose: this.options.verbose,
-			totalTests: testPaths.length,
+			totalTests: paths.length,
 			silent: this.options.silent,
 		});
 
@@ -244,33 +273,37 @@ export default class TestRunner {
 
 		const testIterator = createTestIterator({
 			wptUrls: this.options.wptUrls,
-			testPaths,
+			testPaths: paths,
 			maxTests: this.options.maxTests,
 		});
 
-		for (const testInfo of testIterator) {
-			currentTestPath = testInfo.testPath;
-			const { i: _i, rawFullUrl, _fullUrl } = testInfo;
+		for (const info of testIterator) {
+			if (this.checkpointManager.isTestCompleted(info.testPath)) {
+				continue;
+			}
 
-			progressReporter.startTest(testInfo.testPath);
+			currentTestPath = info.testPath;
+			const { i: _i, rawFullUrl } = info;
+
+			progressReporter.startTest(info.testPath);
 
 			try {
 				const testCompletionPromise = new Promise<void>((resolve) => {
 					currentTestResolve = resolve;
-					wptCollector.setCurrentTest(testInfo.testPath, resolve);
+					collector.setCurrentTest(info.testPath, resolve);
 				});
 
 				if (this.options.underProxy) {
 					await initTestHarnessInterceptor({
 						page,
-						bodyAddition: wptCollector.getBodyAddition(),
+						bodyAddition: collector.getBodyAddition(),
 						log,
 					});
 					if (!proxySetup) {
 						await setupFirstTimeSW({
 							log,
 							browserCtx,
-							wptCollector,
+							wptCollector: collector,
 							setupPage,
 							page,
 							url: rawFullUrl,
@@ -292,11 +325,12 @@ export default class TestRunner {
 
 				await page.waitForLoadState("load");
 
-				const wptUpdateManifestTimeout = (testTimeoutMap.get(currentTestPath)  || DEFAULT_WPT_TIMEOUT) + 5;
+				const updateManifestTimeout =
+					(testTimeoutMap.get(currentTestPath) || DEFAULT_WPT_TIMEOUT) + 5;
 				// This is only needed if the timeout is not already "long" (`60` seconds)
 				// @see https://web-platform-tests.org/writing-tests/testharness-api.html#harness-timeout
 				/*
-				if (wptUpdateManifestTimeout === 60) {
+				if (updateManifestTimeout === 60) {
 					const timeoutSymbol = Symbol("timeout");
 					const metaTimeoutLocator = page.locator(
 						'meta[name="timeout"][content="long"]',
@@ -319,7 +353,7 @@ export default class TestRunner {
 
 				// Race between test completion and timeout
 				const timeoutPromise = new Promise<"timeout">((resolve) => {
-					setTimeout(() => resolve("timeout"), wptUpdateManifestTimeout * 1000);
+					setTimeout(() => resolve("timeout"), updateManifestTimeout * 1000);
 				});
 
 				const completionResult = await Promise.race([
@@ -328,29 +362,39 @@ export default class TestRunner {
 				]);
 
 				const completedInTime = completionResult === "completed";
-				const results = testResults.get(testInfo.testPath) || [];
+				const result = testResults.get(info.testPath) || [];
 
 				if (!completedInTime && currentTestResolve) {
 					const timeoutResult: WPTTestResult = {
-						name: testInfo.testPath,
+						name: info.testPath,
 						status: WPT.TestStatus.NOTRUN,
 						message: "Test timed out",
 					};
 
-					const timeoutResults = [timeoutResult];
-					testResults.set(testInfo.testPath, timeoutResults);
+					const timeoutRes = [timeoutResult];
+					testResults.set(info.testPath, timeoutRes);
 
-					progressReporter.testTimeout(testInfo.testPath);
-					// Sanity check
-					if (testInfo.testsProcessed === 0)
+					progressReporter.testTimeout(info.testPath);
+
+					await this.checkpointManager.recordTestCompletion(
+						info.testPath,
+						timeoutRes,
+					);
+
+					if (info.testsProcessed === 0)
 						return nErrAsync(
 							"Quitting because the first test timed out (there must be something seriously wrong)",
 						);
 				} else {
-					progressReporter.endTest(results);
+					progressReporter.endTest(result);
 				}
+
+				await this.checkpointManager.recordTestCompletion(
+					info.testPath,
+					result,
+				);
 			} catch (error) {
-				progressReporter.error(testInfo.testPath, error);
+				progressReporter.error(info.testPath, error);
 			}
 		}
 
@@ -368,19 +412,24 @@ export default class TestRunner {
 
 		await browser.close();
 
-		const results: WPTDiffResultsWithFailures = {
+		const shutdownResult = await this.checkpointManager.shutdown();
+		if (shutdownResult.isErr()) {
+			log.error(`Failed to save final checkpoint: ${shutdownResult.error}`);
+		}
+
+		const resultsWithFailures: WPTDiffResultsWithFailures = {
 			pass: totalPass,
 			fail: totalFail,
 			other: totalOther,
 		};
 
 		if (this.options.outputFailed) {
-			const failedTests: FailedTest[] = [];
+			const failed: FailedTest[] = [];
 
 			for (const [testPath, testResultsList] of testResults) {
 				for (const testResult of testResultsList) {
 					if (testResult.status === WPT.TestStatus.FAIL) {
-						failedTests.push({
+						failed.push({
 							testPath,
 							testName: testResult.name,
 							status: testResult.status,
@@ -391,15 +440,15 @@ export default class TestRunner {
 				}
 			}
 
-			results.failedTests = failedTests;
+			resultsWithFailures.failedTests = failed;
 
 			if (typeof this.options.outputFailed === "string") {
 				await writeFile(
 					this.options.outputFailed,
-					JSON.stringify(failedTests, null, 2),
+					JSON.stringify(failed, null, 2),
 				);
 			} else {
-				console.log(JSON.stringify(failedTests, null, 2));
+				console.log(JSON.stringify(failed, null, 2));
 			}
 		}
 
@@ -425,7 +474,7 @@ export default class TestRunner {
 		}
 
 		return nOkAsync({
-			results,
+			results: resultsWithFailures,
 		});
 	}
 
@@ -437,14 +486,15 @@ export default class TestRunner {
 	): Promise<Map<string, 10 | 60>> {
 		const timeoutMap = new Map<string, number>();
 
-		for (const [testPath, testInfo] of Object.values(
-			updateManifest.items.testharness,
-		).map((testArray) => testArray[0])) {
-			if (testInfo?.timeout === "long") {
-				timeoutMap.set(`/${testPath}`, 60);
-				continue;
+		for (const testItems of Object.values(updateManifest.items.testharness)) {
+			for (const testItem of testItems) {
+				const [testPath, testInfo] = testItem;
+				if (testInfo?.timeout === "long") {
+					timeoutMap.set(`/${testPath}`, 60);
+					continue;
+				}
+				timeoutMap.set(`/${testPath}`, 10);
 			}
-			timeoutMap.set(`/${testPath}`, 10);
 		}
 		/*
 		commenting this out because we dont have support for reftests or manual
@@ -484,7 +534,7 @@ export default class TestRunner {
 		);
 		this.initialized = true;
 		const wptUpdateManifestURL = new URL(this.options.wptUrls.test);
-		wptUpdateManifestURL.pathname = WPT_UPDATE_MANIFEST_ENDPOINT;
+		wptUpdateManifestURL.pathname = "/tools/runner/update_manifest.py";
 		const updateManifestRespRes = await ResultAsync.fromPromise(
 			fetch(wptUpdateManifestURL, {
 				method: "POST",
@@ -493,35 +543,54 @@ export default class TestRunner {
 		);
 		if (updateManifestRespRes.isErr())
 			return nErrAsync(updateManifestRespRes.error);
-		const updateManifest = await updateManifestRespRes.value.json();
+		const rawManifest = await updateManifestRespRes.value.json();
+
+		// Normalize the manifest data to handle nested arrays
+		const updateManifest = this.normalizeManifest(rawManifest);
 
 		let validateWPTUpdateManifest:
-			| typeof import("../generatedValidators/wptManifestValidator.js").validateWPTUpdateManifest
+			| typeof import(// @ts-ignore: This is generated by `pnpm generate:validators`
+			  "../generatedValidators/wptManifestValidator.js").validateWPTUpdateManifest
 			| null = null;
 		try {
 			const validatorModule = await import(
+				// @ts-ignore: This is generated by `pnpm generate:validators`
 				"../generatedValidators/wptManifestValidator.js"
 			);
 			validateWPTUpdateManifest = validatorModule.validateWPTUpdateManifest;
 		} catch (err) {
 			if (err instanceof Error && err.message.includes("Cannot find module")) {
-				log.warn(
-					"Skipping validation because the WPT Manifest Validator was not found. To enable validation, run 'pnpm generate:validators'.",
-				);
-				return nOkAsync(updateManifest as WPT.UpdateManifest.Manifest);
+				const message =
+					"Typia validators not generated. Run 'pnpm generate:validators' to enable runtime type checking";
+				if (this.options.debug) {
+					log.warn(message);
+					log.warn(
+						"Continuing without runtime type validation (types may not be checked at runtime)",
+					);
+					return nOkAsync(updateManifest as WPT.UpdateManifest.Manifest);
+				} else {
+					log.error(message);
+					return nErrAsync("Runtime validators not generated");
+				}
 			}
 			return nErrAsync(`Failed to load WPT manifest validator: ${err}`);
 		}
-		if (validateWPTUpdateManifest) {
+		if (validateWPTUpdateManifest && !this.options.debug) {
 			const updateManifestValidationRes =
 				validateWPTUpdateManifest(updateManifest);
 			if (updateManifestValidationRes.success) {
 				log.debug("WPT update manifest validation succeeded");
 				return nOkAsync(updateManifest);
 			}
+			const errCount = updateManifestValidationRes.errors?.length || 0;
+			const errDetails = this.options.verbose
+				? `\n${JSON.stringify(updateManifestValidationRes.errors, null, 4)}`
+				: "";
 			return nErrAsync(
-				`Invalid WPT update manifest: ${JSON.stringify(updateManifestValidationRes.errors)}`,
+				`Invalid WPT update manifest: ${errCount} validation errors. Run with debug mode to skip validation.${errDetails}`,
 			);
+		} else if (this.options.debug) {
+			log.warn("Skipping WPT update manifest validation in debug mode");
 		}
 
 		return nOkAsync(updateManifest as WPT.UpdateManifest.Manifest);
@@ -531,6 +600,9 @@ export default class TestRunner {
 		testPaths: { test: string }[],
 		testTimeoutMap: Map<string, 10 | 60>,
 	): { test: string }[] {
+		if (!testPaths || !Array.isArray(testPaths)) {
+			return [];
+		}
 		if (this.options.scope)
 			testPaths = testPaths.filter((test) =>
 				test.test.startsWith(this.options.scope),
@@ -557,5 +629,16 @@ export default class TestRunner {
 			default:
 				return "FAIL";
 		}
+	}
+
+	private normalizeManifest(rawManifest: any): any {
+		const manifest = {
+			...rawManifest,
+			urlBase: rawManifest.url_base || rawManifest.urlBase || "/",
+		};
+
+		delete manifest.url_base;
+
+		return manifest;
 	}
 }

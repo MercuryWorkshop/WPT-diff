@@ -27,7 +27,9 @@ export interface ChromeTestResult {
 	status: string;
 	message: string | null;
 	subtests: ChromeSubtest[];
-	known_intermittent: string[];
+	known_intermittent?: string[];
+	duration?: number;
+	subsuite?: string;
 	[key: string]: unknown;
 }
 
@@ -35,6 +37,6 @@ export interface ChromeSubtest {
 	name: string;
 	status: string;
 	message: string | null;
-	known_intermittent: string[];
+	known_intermittent?: string[];
 	[key: string]: unknown;
 }

@@ -8,10 +8,12 @@ export default async function initTestHarnessInterceptor(pass: {
 	log: typeof logger;
 }): Promise<void> {
 	const { page, bodyAddition, log } = pass;
+
 	log.debug(
 		"\nCreating a Mutation Observer to detect when a test harness script is added to the page",
 	);
 	log.debug(`\n\tInjecting: ${bodyAddition}`);
+
 	await page.addInitScript(/* js */ `
 		new MutationObserver((mutations) => {
 			for (const mutation of mutations)
