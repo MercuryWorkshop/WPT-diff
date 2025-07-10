@@ -102,7 +102,7 @@ runs:
         verbose = ${{ inputs.verbose }}
 
         [wpt]
-        max_tests = ${{ (inputs.wpt_max_tests == "all" && '"all"') || inputs.wpt_max_tests }}
+        max_tests = "${{ inputs.wpt_max_tests }}"
         under_proxy = ${{ inputs.under_proxy }}
 
         [wpt.urls]
