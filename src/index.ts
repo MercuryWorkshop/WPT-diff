@@ -23,13 +23,13 @@ import forwardConsole from "#util/forwardConsole.ts";
 import createTestIterator from "#util/testIterator.ts";
 // Dynamic import for validator will be done in getWPTUpdateManifest method
 import { enterNewUrl } from "./page/enterNewUrl.ts";
+import { setupPage } from "./page/setupPage.ts";
 import setupFirstTimeSW from "./page/setupFirstTimeSW.ts";
 import WptCollector from "./page/wptCollector.ts";
 import createTestHarness from "./routeInterceptors/testHarness.ts";
 import initTestHarnessInterceptor from "./routeInterceptors/testHarnessSW.ts";
 
 const DEFAULT_WPT_TIMEOUT = 10;
-const PROXY_URL = "http://localhost:1337";
 const WPT_UPDATE_MANIFEST_ENDPOINT = "/tools/runner/update_manifest.py";
 const WPT_RUNS_ENDPOINT =
 	"/api/run?label=master&label=stable&product=chrome&aligned";
@@ -194,7 +194,7 @@ export default class TestRunner {
 		});
 
 		const browserCtx = await browser.newContext({
-			baseURL: this.options.underProxy ? PROXY_URL : this.options.wptUrls.test,
+			baseURL: this.options.underProxy ? this.options.wptUrls.proxy : this.options.wptUrls.test,
 			ignoreHTTPSErrors: true,
 		});
 
@@ -271,7 +271,7 @@ export default class TestRunner {
 							log,
 							browserCtx,
 							wptCollector,
-							setupPage: this.options.setupPage,
+							setupPage,
 							page,
 							url: rawFullUrl,
 						});
@@ -292,8 +292,7 @@ export default class TestRunner {
 
 				await page.waitForLoadState("load");
 
-				const wptUpdateManifestTimeout =
-					testTimeoutMap.get(currentTestPath) || DEFAULT_WPT_TIMEOUT;
+				const wptUpdateManifestTimeout = (testTimeoutMap.get(currentTestPath)  || DEFAULT_WPT_TIMEOUT) + 5;
 				// This is only needed if the timeout is not already "long" (`60` seconds)
 				// @see https://web-platform-tests.org/writing-tests/testharness-api.html#harness-timeout
 				/*

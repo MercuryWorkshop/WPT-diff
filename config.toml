@@ -7,5 +7,6 @@ max_tests = "all"
 under_proxy = true
 
 [wpt.urls]
+proxy_base_url = "http://localhost:1337"
 tests_base_url = "http://wpt.live"
 api_base_url = "https://wpt.fyi"

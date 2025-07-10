@@ -26,6 +26,10 @@ inputs:
     description: 'Run tests under proxy'
     required: false
     default: true
+  proxy_base_url:
+    description: 'Base URL for WPT tests'
+    required: false
+    default: 'http://localhost:1337/'
   wpt_tests_base_url:
     description: 'Base URL for WPT tests'
     required: false
@@ -121,6 +125,7 @@ runs:
         under_proxy = ${{ inputs.under_proxy }}
 
         [wpt.urls]
+        proxy_base_url = "${{ inputs.proxy_base_url }}"
         tests_base_url = "${{ inputs.wpt_tests_base_url }}"
         api_base_url = "${{ inputs.wpt_api_base_url }}"
         EOF

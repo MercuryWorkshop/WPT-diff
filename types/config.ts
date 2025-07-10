@@ -8,6 +8,7 @@ export const ParsedTomlConfigSchema = z.object({
 		max_tests: z.number().or(z.literal("all")),
 		under_proxy: z.boolean(),
 		urls: z.object({
+			proxy_base_url: z.string(),
 			tests_base_url: z.string(),
 			api_base_url: z.string(),
 		}),

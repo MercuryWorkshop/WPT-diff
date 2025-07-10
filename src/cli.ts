@@ -1,6 +1,5 @@
 import { Command } from "commander";
 
-import { setupPage } from "../scramjet/tests/util/setupPage.ts";
 import TestRunner from "./index";
 
 import log from "./logger";
@@ -61,6 +60,7 @@ log.info(
 const testRunner = new TestRunner({
 	logger: log,
 	wptUrls: {
+		proxy: config.wpt.urls.proxy_base_url,
 		test: config.wpt.urls.tests_base_url,
 		api: config.wpt.urls.api_base_url
 	},
@@ -69,7 +69,6 @@ const testRunner = new TestRunner({
 	scope: program.args[0],
 	outputFailed: programOptions.outputFailed,
 	report: programOptions.report,
-	setupPage,
 	debug: debugMode,
 	verbose: verboseMode,
 	silent: !verboseMode,

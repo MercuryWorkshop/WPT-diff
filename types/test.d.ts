@@ -1,10 +1,9 @@
 import type log from "../src/logger.ts";
 
-import type { Page } from "playwright";
-
 export interface TestOptions {
 	logger: typeof log;
 	wptUrls: {
+		proxy: string;
 		test: string;
 		api: string;
 	};
@@ -13,8 +12,6 @@ export interface TestOptions {
 	scope: string;
 	outputFailed: boolean | string;
 	report: boolean | string;
-	// biome-ignore lint/complexity/noBannedTypes: I will elaborate later leave me alone
-	setupPage: (page: Page, url: string) => Promise<FrameLocator>;
 	debug: boolean;
 	verbose: boolean;
 	silent: boolean;
