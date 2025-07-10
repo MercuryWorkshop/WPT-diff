@@ -115,14 +115,7 @@ runs:
       shell: bash
       working-directory: '${{ inputs.location }}'
       run: |
-        # Ensure we're in the WPT-diff directory
-        pwd; ls -la;
-        if [ -f "package.json" ] && grep '"name": "wpt"' package.json; then
-          pnpm start --report wpt-report.json || true
-        else
-          echo "Error: Not in WPT-diff directory"
-          exit 1
-        fi
+        pnpm start --report wpt-report.json
 
     - name: Stop WPT server
       shell: bash
