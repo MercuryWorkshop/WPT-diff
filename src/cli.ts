@@ -43,7 +43,10 @@ program.option(
 
 program.option("--resume-from <file>", "resume testing from a checkpoint file");
 
-program.argument("[scope]", "The scope of tests to run. (optional)");
+program.argument(
+	"[paths...]",
+	"Specific test paths or directories to run. Can be comma-separated or space-separated. Examples: '/fetch/api/basic.html' or '/fetch/api/' or 'fetch,streams'",
+);
 
 program.parse();
 
@@ -72,6 +75,26 @@ log.info(
 	`About to run the tests with verbose mode ${verboseMode ? "enabled" : "disabled"}`,
 );
 
+let testPaths: string[] | undefined;
+if (program.args.length > 0) {
+	testPaths = [];
+	for (const arg of program.args) {
+		if (arg.includes(",")) {
+			testPaths.push(...arg.split(",").map((p) => p.trim()));
+		} else {
+			testPaths.push(arg);
+		}
+	}
+	testPaths = testPaths.map((path) => {
+		if (!path.startsWith("/")) {
+			return `/${path}`;
+		}
+		return path;
+	});
+
+	log.info(`Running specific tests: ${testPaths.join(", ")}`);
+}
+
 const testRunner = new TestRunner(
 	{
 		logger: log,
@@ -82,7 +105,8 @@ const testRunner = new TestRunner(
 		},
 		maxTests: config.wpt.max_tests,
 		underProxy: config.wpt.under_proxy,
-		scope: program.args[0],
+		scope: testPaths?.[0],
+		testPaths: testPaths,
 		outputFailed: programOptions.outputFailed,
 		report: programOptions.report,
 		debug: debugMode,

@@ -269,6 +269,41 @@ export default class TestRunner {
 			silent: this.options.silent,
 		});
 
+		// Gracefully shut down, so we don't get flooded with errors
+		let isShuttingDown = false;
+		const handleShutdown = async (signal: string) => {
+			if (isShuttingDown) return;
+			isShuttingDown = true;
+
+			log.info(`\nReceived ${signal}, shutting down gracefully...`);
+			progressReporter.finish();
+
+			// Save checkpoint before closing
+			const shutdownResult = await this.checkpointManager.shutdown();
+			if (shutdownResult.isErr()) {
+				log.error(
+					`Failed to save checkpoint during shutdown: ${shutdownResult.error}`,
+				);
+			} else {
+				log.info("Checkpoint saved successfully");
+			}
+
+			// Close browser
+			try {
+				await browser.close();
+			} catch (err) {
+				log.debug(`Error closing browser: ${err}`);
+			}
+
+			process.exit(0);
+		};
+
+		const sigintHandler = () => handleShutdown("SIGINT");
+		const sigtermHandler = () => handleShutdown("SIGTERM");
+
+		process.on("SIGINT", sigintHandler);
+		process.on("SIGTERM", sigtermHandler);
+
 		let proxySetup = false;
 
 		const testIterator = createTestIterator({
@@ -277,59 +312,61 @@ export default class TestRunner {
 			maxTests: this.options.maxTests,
 		});
 
-		for (const info of testIterator) {
-			if (this.checkpointManager.isTestCompleted(info.testPath)) {
-				continue;
-			}
-
-			currentTestPath = info.testPath;
-			const { i: _i, rawFullUrl } = info;
-
-			progressReporter.startTest(info.testPath);
-
-			try {
-				const testCompletionPromise = new Promise<void>((resolve) => {
-					currentTestResolve = resolve;
-					collector.setCurrentTest(info.testPath, resolve);
-				});
-
-				if (this.options.underProxy) {
-					await initTestHarnessInterceptor({
-						page,
-						bodyAddition: collector.getBodyAddition(),
-						log,
-					});
-					if (!proxySetup) {
-						await setupFirstTimeSW({
-							log,
-							browserCtx,
-							wptCollector: collector,
-							setupPage,
-							page,
-							url: rawFullUrl,
-						});
-						proxySetup = true;
-					} else {
-						await enterNewUrl({
-							log,
-							page,
-							url: rawFullUrl,
-						});
-					}
+		try {
+			for (const info of testIterator) {
+				if (isShuttingDown) break;
+				if (this.checkpointManager.isTestCompleted(info.testPath)) {
+					continue;
 				}
-				// Go to the site directly if there is no proxy, since there is no need to
-				else
-					await page.goto(rawFullUrl, {
-						waitUntil: "commit",
+
+				currentTestPath = info.testPath;
+				const { i: _i, rawFullUrl } = info;
+
+				progressReporter.startTest(info.testPath);
+
+				try {
+					const testCompletionPromise = new Promise<void>((resolve) => {
+						currentTestResolve = resolve;
+						collector.setCurrentTest(info.testPath, resolve);
 					});
 
-				await page.waitForLoadState("load");
+					if (this.options.underProxy) {
+						await initTestHarnessInterceptor({
+							page,
+							bodyAddition: collector.getBodyAddition(),
+							log,
+						});
+						if (!proxySetup) {
+							await setupFirstTimeSW({
+								log,
+								browserCtx,
+								wptCollector: collector,
+								setupPage,
+								page,
+								url: rawFullUrl,
+							});
+							proxySetup = true;
+						} else {
+							await enterNewUrl({
+								log,
+								page,
+								url: rawFullUrl,
+							});
+						}
+					}
+					// Go to the site directly if there is no proxy, since there is no need to
+					else
+						await page.goto(rawFullUrl, {
+							waitUntil: "commit",
+						});
 
-				const updateManifestTimeout =
-					(testTimeoutMap.get(currentTestPath) || DEFAULT_WPT_TIMEOUT) + 5;
-				// This is only needed if the timeout is not already "long" (`60` seconds)
-				// @see https://web-platform-tests.org/writing-tests/testharness-api.html#harness-timeout
-				/*
+					await page.waitForLoadState("load");
+
+					const updateManifestTimeout =
+						(testTimeoutMap.get(currentTestPath) || DEFAULT_WPT_TIMEOUT) + 5;
+					// This is only needed if the timeout is not already "long" (`60` seconds)
+					// @see https://web-platform-tests.org/writing-tests/testharness-api.html#harness-timeout
+					/*
 				if (updateManifestTimeout === 60) {
 					const timeoutSymbol = Symbol("timeout");
 					const metaTimeoutLocator = page.locator(
@@ -351,50 +388,68 @@ export default class TestRunner {
 				}
 				*/
 
-				// Race between test completion and timeout
-				const timeoutPromise = new Promise<"timeout">((resolve) => {
-					setTimeout(() => resolve("timeout"), updateManifestTimeout * 1000);
-				});
+					// Race between test completion and timeout
+					const timeoutPromise = new Promise<"timeout">((resolve) => {
+						setTimeout(() => resolve("timeout"), updateManifestTimeout * 1000);
+					});
 
-				const completionResult = await Promise.race([
-					testCompletionPromise.then(() => "completed" as const),
-					timeoutPromise,
-				]);
+					const completionResult = await Promise.race([
+						testCompletionPromise.then(() => "completed" as const),
+						timeoutPromise,
+					]);
 
-				const completedInTime = completionResult === "completed";
-				const result = testResults.get(info.testPath) || [];
+					const completedInTime = completionResult === "completed";
+					const result = testResults.get(info.testPath) || [];
 
-				if (!completedInTime && currentTestResolve) {
-					const timeoutResult: WPTTestResult = {
-						name: info.testPath,
-						status: WPT.TestStatus.NOTRUN,
-						message: "Test timed out",
-					};
+					if (!completedInTime && currentTestResolve) {
+						const timeoutResult: WPTTestResult = {
+							name: info.testPath,
+							status: WPT.TestStatus.NOTRUN,
+							message: "Test timed out",
+						};
 
-					const timeoutRes = [timeoutResult];
-					testResults.set(info.testPath, timeoutRes);
+						const timeoutRes = [timeoutResult];
+						testResults.set(info.testPath, timeoutRes);
 
-					progressReporter.testTimeout(info.testPath);
+						progressReporter.testTimeout(info.testPath);
+
+						await this.checkpointManager.recordTestCompletion(
+							info.testPath,
+							timeoutRes,
+						);
+
+						if (info.testsProcessed === 0)
+							return nErrAsync(
+								"Quitting because the first test timed out (there must be something seriously wrong)",
+							);
+					} else {
+						progressReporter.endTest(result);
+					}
 
 					await this.checkpointManager.recordTestCompletion(
 						info.testPath,
-						timeoutRes,
+						result,
 					);
+				} catch (error) {
+					if (isShuttingDown) break;
 
-					if (info.testsProcessed === 0)
-						return nErrAsync(
-							"Quitting because the first test timed out (there must be something seriously wrong)",
-						);
-				} else {
-					progressReporter.endTest(result);
+					// Check if error is due to browser being closed
+					const errorMsg =
+						error instanceof Error ? error.message : String(error);
+					if (
+						errorMsg.includes("Target page, context or browser has been closed")
+					) {
+						log.debug(`Browser closed while testing ${info.testPath}`);
+						break;
+					}
+
+					progressReporter.error(info.testPath, error);
 				}
-
-				await this.checkpointManager.recordTestCompletion(
-					info.testPath,
-					result,
-				);
-			} catch (error) {
-				progressReporter.error(info.testPath, error);
+			}
+		} catch (err) {
+			// Handle any unexpected errors in the test loop
+			if (!isShuttingDown) {
+				log.error(`Unexpected error in test loop: ${err}`);
 			}
 		}
 
@@ -408,13 +463,19 @@ export default class TestRunner {
 				else totalOther++;
 			}
 
-		progressReporter.finish();
+		if (!isShuttingDown) {
+			progressReporter.finish();
 
-		await browser.close();
+			await browser.close();
 
-		const shutdownResult = await this.checkpointManager.shutdown();
-		if (shutdownResult.isErr()) {
-			log.error(`Failed to save final checkpoint: ${shutdownResult.error}`);
+			const shutdownResult = await this.checkpointManager.shutdown();
+			if (shutdownResult.isErr()) {
+				log.error(`Failed to save final checkpoint: ${shutdownResult.error}`);
+			}
+
+			// Remove signal handlers
+			process.removeListener("SIGINT", sigintHandler);
+			process.removeListener("SIGTERM", sigtermHandler);
 		}
 
 		const resultsWithFailures: WPTDiffResultsWithFailures = {
@@ -603,10 +664,32 @@ export default class TestRunner {
 		if (!testPaths || !Array.isArray(testPaths)) {
 			return [];
 		}
-		if (this.options.scope)
+
+		if (this.options.testPaths && this.options.testPaths.length > 0) {
+			const requestedPaths = this.options.testPaths;
+			testPaths = testPaths.filter((test) => {
+				for (const requestedPath of requestedPaths) {
+					if (requestedPath.endsWith(".html")) {
+						if (test.test === requestedPath) {
+							return true;
+						}
+					} else {
+						const dirPath = requestedPath.endsWith("/")
+							? requestedPath
+							: `${requestedPath}/`;
+						if (test.test.startsWith(dirPath)) {
+							return true;
+						}
+					}
+				}
+				return false;
+			});
+		} else if (this.options.scope) {
 			testPaths = testPaths.filter((test) =>
 				test.test.startsWith(this.options.scope),
 			);
+		}
+
 		// We don't have a need to run WASM tests and we don't have a test harness for a good reason
 		testPaths = testPaths.filter((test) => !test.test.startsWith("/wasm/"));
 		if (this.options.maxTests && typeof this.options.maxTests === "number")

@@ -10,6 +10,7 @@ export interface TestOptions {
 	maxTests: number | "all";
 	underProxy: boolean;
 	scope: string;
+	testPaths?: string[];
 	outputFailed: boolean | string;
 	report: boolean | string;
 	debug: boolean;

@@ -156,10 +156,13 @@ async function promptConfigureHosts(
 	});
 
 	return new Promise((resolve) => {
-		rl.question("WPT hosts are not configured. Would you like to configure them now? (y/n) ", (answer) => {
-			rl.close();
-			resolve(nOkAsync(answer.toLowerCase() === "y"));
-		});
+		rl.question(
+			"WPT hosts are not configured. Would you like to configure them now? (y/n) ",
+			(answer) => {
+				rl.close();
+				resolve(nOkAsync(answer.toLowerCase() === "y"));
+			},
+		);
 	});
 }
 
@@ -255,7 +258,8 @@ export async function performHealthChecks(
 					}
 				}
 			} else {
-				const msg = "WPT hosts are not configured. Run: cd wpt && ./wpt make-hosts-file | sudo tee -a /etc/hosts";
+				const msg =
+					"WPT hosts are not configured. Run: cd wpt && ./wpt make-hosts-file | sudo tee -a /etc/hosts";
 				if (debug) {
 					logger.warn(msg);
 					logger.warn("Continuing anyway in debug mode");
