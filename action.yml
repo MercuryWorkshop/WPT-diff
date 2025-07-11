@@ -4,7 +4,8 @@ author: "MercuryWorkshop"
 inputs:
   location:
     description: "Action clone location"
-    required: true
+    required: false
+    default: "."
   run_js_setup:
     description: "Whether to run node/pnpm setup"
     required: false
