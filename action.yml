@@ -33,19 +33,17 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Setup pnpm package manager
+    - name: Setup pnpm
       uses: pnpm/action-setup@v4
       if: ${{ inputs.run_js_setup == 'true' }}
       with:
         version: latest
 
-    - name: Setup Node.js with pnpm cache
+    - name: Setup Node.js
       uses: actions/setup-node@v4
       if: ${{ inputs.run_js_setup == 'true' }}
       with:
         node-version: latest
-        cache: pnpm
-        cache-dependency-path: ${{ inputs.location }}/pnpm-lock.yaml
 
     - name: Install dependencies
       shell: bash
