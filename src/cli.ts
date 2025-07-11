@@ -41,6 +41,11 @@ program.option(
 	"Total number of shards for test distribution",
 );
 
+program.option(
+	"--max-tests <count>",
+	"Maximum number of tests to run (overrides config file)",
+);
+
 program.argument(
 	"[paths...]",
 	"Specific test paths or directories to run. Can be comma-separated or space-separated. Examples: '/fetch/api/basic.html' or '/fetch/api/' or 'fetch,streams'",
@@ -100,7 +105,9 @@ async function main() {
 			test: config.wpt.urls.tests_base_url,
 			api: config.wpt.urls.api_base_url,
 		},
-		maxTests: config.wpt.max_tests,
+		maxTests: programOptions.maxTests
+			? parseInt(programOptions.maxTests)
+			: config.wpt.max_tests,
 		underProxy: config.wpt.under_proxy,
 		scope: paths ? paths[0] : "",
 		testPaths: paths,
