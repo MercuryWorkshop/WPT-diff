@@ -33,9 +33,213 @@ import initTestHarnessInterceptor from "./routeInterceptors/testHarnessSW.ts";
 
 const DEFAULT_WPT_TIMEOUT = 10;
 
+/**
+ * Path-based detection for test driver test directories (we don't support test driver)
+ *
+ * TODO: Support *some* test driver tests using Adapt Appium Playwright Driver
+ *
+ * @see https://web-platform-tests.org/writing-tests/testdriver.html#testdriver-tests
+ */
+const TESTDRIVER_PATHS = new Set([
+	"/webdriver/",
+	"/permissions/",
+	// TODO: Support
+	"/permissions-policy/",
+	"/geolocation-API/",
+	"/notifications/",
+	"/mediacapture-streams/",
+	"/push-api/",
+	"/webauthn/",
+	"/fullscreen/",
+	"/pointerlock/",
+	"/gamepad/",
+	"/screen-orientation/",
+	"/vibration/",
+	"/battery-status/",
+	"/device-memory/",
+	// TODO: Support
+	"/payment-request/",
+]);
+/**
+ * Filename pattern detection for testdriver tests
+ *
+ * @see https://web-platform-tests.org/writing-tests/testdriver.html
+ */
+const TESTDRIVER_PATTERNS = new Set([
+	/testdriver/,
+	/user-activation/,
+	/automation/,
+	/interaction/,
+]);
+/**
+ * Directory patterns for user interaction tests
+ *
+ * @see https://web-platform-tests.org/writing-tests/testdriver.html
+ */
+const INTERACTION_PATHS = new Set([
+	"/touch-events/",
+	"/pointerevents/",
+	"/uievents/",
+	"/keyboard-lock/",
+	"/keyboard-map/",
+	"/input-events/",
+]);
+// Browser internals and functionality that proxies don't affect
+const PROXY_IRRELEVANT_PATHS = new Set([
+	// Cryptography
+	"/WebCryptoAPI/",
+	"/crypto/",
+	"/webcrypto/",
+	"/subtle-crypto/",
+	// Hardware
+	"/accelerometer/",
+	"/gyroscope/",
+	"/magnetometer/",
+	"/orientation-sensor/",
+	"/ambient-light/",
+	"/proximity/",
+	"/device-orientation/",
+	"/generic-sensor/",
+	// Memory/Performance
+	"/memory-api/",
+	"/compute-pressure/",
+	"/largest-contentful-paint/",
+	"/layout-instability/",
+	// Encoding
+	"/encoding/",
+	"/compression/",
+	"/streams/",
+	// File System APIs (for now, we aren't making proxy browsers yet)
+	"/file-system-access/",
+	"/file-api/",
+	"/fileapi/",
+	// Outside of browser
+	"/fullscreen/",
+	"/screen-capture/",
+	"/picture-in-picture/",
+	// Maybe when we are making proxy browsers
+	"/web-share/",
+	"/web-locks/",
+	// WASM
+	"/wasm/",
+	"/webassembly/",
+	// Media
+	"/media-capabilities/",
+	"/media-session/",
+	"/mediasession/",
+	"/mediacapture-record/",
+	"/webcodecs/",
+	// Payment
+	"/payment-request/",
+	"/payment-handler/",
+	"/payment-method-basic-card/",
+	"/payment-method-id/",
+	"/secure-payment-confirmation/",
+	// Web Auth
+	"/credential-management/",
+	"/webauthn/",
+	"/fido-u2f/",
+	// Observers
+	"/intersection-observer/",
+	"/resize-observer/",
+	// Low-level hardware access
+	"/web-bluetooth/",
+	"/webusb/",
+	"/serial/",
+	"/webhid/",
+	// Clipboard (we aren't making proxy browsers yet)
+	"/clipboard-apis/",
+	// Device information
+	"/battery-status/",
+	"/device-memory/",
+	"/netinfo/",
+	// Origin Trials (proxies are made for the general user, not for developers)
+	"/origin-trial/",
+	// WebRTC (we don't care)
+	"/webrtc/",
+	"/webrtc-stats/",
+	"/webrtc-identity/",
+	"/webrtc-priority/",
+	"/webrtc-encoded-transform/",
+	// Typography and text rendering
+	"/mathml/",
+	"/svg/text/",
+	// Internationalization APIs (browser-level locale handling)
+	"/intl/",
+	"/Intl/",
+	"/internationalization/",
+	// Form Controls
+	"/html/forms/",
+	"/html/input/",
+	"/html/select/",
+	"/html/textarea/",
+	"/html/fieldset/",
+	"/html/datalist/",
+	// Table rendering
+	"/html/tables/",
+	// Media and graphics
+	"/html/canvas/",
+	"/html/media/",
+	"/html/interaction/",
+	// File uploads and form file handling
+	"/FileAPI/",
+	"/file-upload/",
+	"/html/semantics/forms/the-input-element/file-upload/",
+	"/html/semantics/forms/form-submission-0/",
+	// Accessibility
+	"/accname/",
+	"/core-aam/",
+	"/dpub-aam/",
+	"/graphics-aam/",
+	"/html-aam/",
+	"/svg-aam/",
+	"/wai-aria/",
+	// Devtools
+	"/console/",
+	"/reporting/",
+	"/deprecation-reporting/",
+	"/intervention-reporting/",
+	// Animations
+	"/web-animations/",
+	"/animation-worklet/",
+	"/scroll-animations/",
+]);
+
+// Regex patterns for proxy-irrelevant tests
+const PROXY_IRRELEVANT_PATTERNS = new Set([
+	/\/interfaces\//,
+	/\/idlharness/,
+	/\/tools\//,
+	/\/resources\//,
+	/\.tentative\./,
+	/\.https\./,
+	/-manual\./,
+	/-visual\./,
+	/-print\./,
+	/-rendering/,
+	/-formatting/,
+	/-layout/,
+	/-styling/,
+	/-css-/,
+	/currency/,
+	/financial/,
+	/payment/,
+	/money/,
+	// File upload patterns
+	/file-upload/,
+	/upload/,
+	/multipart/,
+	/form-data/,
+	/-file\./,
+	/\.file\./,
+]);
+
 export default class TestRunner {
 	private initialized = false;
 	private options: TestOptions;
+	private filterLogger: {
+		debug: (message: string) => void;
+	};
 
 	static mapTestStatusToJSON(status: number): string {
 		switch (status) {
@@ -125,6 +329,11 @@ export default class TestRunner {
 
 	constructor(options: TestOptions) {
 		this.options = options;
+		this.filterLogger = {
+			debug: (message: string) => {
+				this.options.logger.debug(message);
+			},
+		};
 	}
 
 	/**
@@ -599,16 +808,16 @@ export default class TestRunner {
 	}
 
 	private filterTests(
-		testPaths: { test: string }[],
+		path: { test: string }[],
 		testTimeoutMap: Map<string, 10 | 60>,
 	): { test: string }[] {
-		if (!testPaths || !Array.isArray(testPaths)) {
+		if (!path || !Array.isArray(path)) {
 			return [];
 		}
 
 		if (this.options.testPaths && this.options.testPaths.length > 0) {
 			const requestedPaths = this.options.testPaths;
-			testPaths = testPaths.filter((test) => {
+			path = path.filter((test) => {
 				for (const requestedPath of requestedPaths) {
 					if (requestedPath.endsWith(".html")) {
 						if (test.test === requestedPath) {
@@ -626,13 +835,63 @@ export default class TestRunner {
 				return false;
 			});
 		} else if (this.options.scope) {
-			testPaths = testPaths.filter((test) =>
-				test.test.startsWith(this.options.scope!),
-			);
+			path = path.filter((test) => test.test.startsWith(this.options.scope!));
 		}
 
-		// We don't have a need to run WASM tests and we don't have a test harness for a good reason (we will fall back on Chrome official results)
-		testPaths = testPaths.filter((test) => !test.test.startsWith("/wasm/"));
+		path = path.filter((test) => {
+			if (
+				test.test.startsWith("/reftest/") ||
+				test.test.startsWith("/manual/")
+			) {
+				this.filterLogger.debug(
+					`Skipping non-testharness test: '${test.test}'`,
+				);
+				return false;
+			}
+
+			for (const testdriverPath of TESTDRIVER_PATHS) {
+				if (test.test.startsWith(testdriverPath)) {
+					this.filterLogger.debug(`Skipping testdriver test: '${test.test}'`);
+					return false;
+				}
+			}
+
+			for (const interactionPath of INTERACTION_PATHS) {
+				if (test.test.startsWith(interactionPath)) {
+					this.filterLogger.debug(`Skipping interaction test: '${test.test}'`);
+					return false;
+				}
+			}
+
+			for (const pattern of TESTDRIVER_PATTERNS) {
+				if (pattern.test(test.test)) {
+					this.filterLogger.debug(
+						`Skipping testdriver pattern test: '${test.test}'`,
+					);
+					return false;
+				}
+			}
+
+			for (const irrelevantPath of PROXY_IRRELEVANT_PATHS) {
+				if (test.test.startsWith(irrelevantPath)) {
+					this.filterLogger.debug(
+						`Skipping proxy-irrelevant test: '${test.test}'`,
+					);
+					return false;
+				}
+			}
+
+			for (const pattern of PROXY_IRRELEVANT_PATTERNS) {
+				if (pattern.test(test.test)) {
+					this.filterLogger.debug(
+						`Skipping proxy-irrelevant pattern test: '${test.test}'`,
+					);
+					return false;
+				}
+			}
+
+			return true;
+		});
 
 		if (this.options.shard && this.options.totalShards) {
 			const shard = this.options.shard;
@@ -646,7 +905,7 @@ export default class TestRunner {
 			}
 
 			// Use hash-based distribution for even load balancing
-			testPaths = testPaths.filter((test) => {
+			path = path.filter((test) => {
 				const hash = createHash("sha256").update(test.test).digest("hex");
 				const hashValue = parseInt(hash.slice(0, 8), 16);
 				const shardIndex = hashValue % totalShards;
@@ -654,15 +913,15 @@ export default class TestRunner {
 			});
 
 			this.options.logger.info(
-				`Running shard ${shard} of ${totalShards} (${testPaths.length} tests)`,
+				`Running shard ${shard} of ${totalShards} (${path.length} tests)`,
 			);
 		}
 
 		if (this.options.maxTests && typeof this.options.maxTests === "number")
-			testPaths = testPaths.slice(0, this.options.maxTests);
+			path = path.slice(0, this.options.maxTests);
 		// Only use tests we can run in our runner
-		testPaths = testPaths.filter((test) => testTimeoutMap.has(test.test));
-		return testPaths;
+		path = path.filter((test) => testTimeoutMap.has(test.test));
+		return path;
 	}
 
 	private normalizeManifest(rawManifest: any): any {
