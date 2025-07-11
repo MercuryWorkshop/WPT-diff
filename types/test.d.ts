@@ -18,4 +18,6 @@ export interface TestOptions {
 	silent: boolean;
 	checkpointFile?: string;
 	resumeFrom?: string;
+	shard?: number;
+	totalShards?: number;
 }

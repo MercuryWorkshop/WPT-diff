@@ -1,6 +1,7 @@
 {
-  "name": "wpt",
-  "version": "1.0.0",
+  "name": "wpt-diff",
+  "version": "0.0.1",
+  "private": true,
   "description": "",
   "main": "index.js",
   "type": "module",
@@ -11,14 +12,15 @@
     "fmt": "biome format --write .",
     "prepare": "ts-patch install",
     "generate:validators": "typia generate --input src/util/validators --output generatedValidators",
-    "submodule:bump": "git submodule update --remote --merge"
+    "submodule:bump": "git submodule update --remote --merge",
+    "combine-reports": "tsx src/util/combineReports.ts"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
   "devDependencies": {
     "@biomejs/biome": "^2.1.1",
     "@types/node": "^24.0.12",
+    "@types/proper-lockfile": "^4.1.4",
     "@types/supports-color": "^10.0.0",
     "ts-node": "^10.9.2",
     "ts-patch": "^3.3.0",
@@ -34,6 +36,7 @@
     "neverthrow": "^8.2.0",
     "ora": "^8.2.0",
     "playwright": "^1.53.2",
+    "proper-lockfile": "^4.1.2",
     "simple-git": "^3.28.0",
     "smol-toml": "^1.4.1",
     "tslog": "^4.9.3",

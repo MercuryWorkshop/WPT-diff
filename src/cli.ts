@@ -43,6 +43,16 @@ program.option(
 
 program.option("--resume-from <file>", "resume testing from a checkpoint file");
 
+program.option(
+	"--shard <index>",
+	"Current shard index (1-based) for test distribution",
+);
+
+program.option(
+	"--total-shards <count>",
+	"Total number of shards for test distribution",
+);
+
 program.argument(
 	"[paths...]",
 	"Specific test paths or directories to run. Can be comma-separated or space-separated. Examples: '/fetch/api/basic.html' or '/fetch/api/' or 'fetch,streams'",
@@ -105,7 +115,7 @@ const testRunner = new TestRunner(
 		},
 		maxTests: config.wpt.max_tests,
 		underProxy: config.wpt.under_proxy,
-		scope: testPaths?.[0],
+		scope: testPaths ? testPaths[0] : "",
 		testPaths: testPaths,
 		outputFailed: programOptions.outputFailed,
 		report: programOptions.report,
@@ -114,6 +124,10 @@ const testRunner = new TestRunner(
 		silent: !verboseMode,
 		checkpointFile: programOptions.checkpointFile,
 		resumeFrom: programOptions.resumeFrom,
+		shard: programOptions.shard ? parseInt(programOptions.shard) : undefined,
+		totalShards: programOptions.totalShards
+			? parseInt(programOptions.totalShards)
+			: undefined,
 	},
 	config.ci?.checkpoint_interval,
 );

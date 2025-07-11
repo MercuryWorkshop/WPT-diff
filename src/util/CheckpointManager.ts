@@ -1,4 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
+import { lock } from "proper-lockfile";
 import {
 	type Result,
 	type ResultAsync,
@@ -45,10 +46,35 @@ export class CheckpointManager {
 			this.logger.info(
 				`Resumed from checkpoint with ${this.checkpoint.progress.completedTests} completed tests`,
 			);
+		} else if (this.checkpointPath) {
+			try {
+				const loadResult = await this.loadCheckpoint(this.checkpointPath);
+				if (loadResult.isOk()) {
+					this.checkpoint = loadResult.value;
+					return nOk(undefined);
+				}
+			} catch {}
+			this.checkpoint = {
+				timestamp: Date.now(),
+				config: {
+					scope: this.options.scope,
+					maxTests: this.options.maxTests,
+					underProxy: this.options.underProxy,
+					wptUrls: this.options.wptUrls,
+				},
+				progress: {
+					totalTests,
+					completedTests: 0,
+					completedTestPaths: [],
+					lastProcessedTest: undefined,
+				},
+				testResults: new Map(),
+				chromeReportData: null,
+				timeStart,
+			};
 		} else {
 			this.checkpoint = {
 				timestamp: Date.now(),
-				version: "1.0.0",
 				config: {
 					scope: this.options.scope,
 					maxTests: this.options.maxTests,
@@ -75,26 +101,45 @@ export class CheckpointManager {
 	 */
 	async recordTestCompletion(
 		testPath: string,
-		testRests: WPTTestResult[],
+		testResults: WPTTestResult[],
 	): Promise<Result<void, string>> {
-		if (!this.checkpoint) {
-			return nErr("Checkpoint not initialized");
+		if (!this.checkpointPath) {
+			return nErr("Checkpoint path not configured");
 		}
 
-		this.checkpoint.testResults.set(testPath, testRests);
-		this.checkpoint.progress.completedTests++;
-		this.checkpoint.progress.completedTestPaths.push(testPath);
-		this.checkpoint.progress.lastProcessedTest = testPath;
-		this.checkpoint.timestamp = Date.now();
+		let release;
+		try {
+			release = await lock(this.checkpointPath, { retries: 5 });
 
-		this.testsSinceLastSave++;
+			const loadResult = await this.loadCheckpoint(this.checkpointPath);
+			if (loadResult.isErr()) {
+				return nErr(loadResult.error);
+			}
+			this.checkpoint = loadResult.value;
 
-		if (this.checkpointPath && this.testsSinceLastSave >= this.saveInterval) {
-			const saveResult = await this.save();
-			if (saveResult.isErr()) {
-				this.logger.error(`Failed to save checkpoint: ${saveResult.error}`);
-			} else {
-				this.testsSinceLastSave = 0;
+			if (!this.checkpoint) {
+				return nErr("Checkpoint not initialized");
+			}
+
+			this.checkpoint.testResults.set(testPath, testResults);
+			this.checkpoint.progress.completedTests++;
+			this.checkpoint.progress.completedTestPaths.push(testPath);
+			this.checkpoint.progress.lastProcessedTest = testPath;
+			this.checkpoint.timestamp = Date.now();
+
+			this.testsSinceLastSave++;
+
+			if (this.testsSinceLastSave >= this.saveInterval) {
+				const saveResult = await this.save();
+				if (saveResult.isErr()) {
+					this.logger.error(`Failed to save checkpoint: ${saveResult.error}`);
+				} else {
+					this.testsSinceLastSave = 0;
+				}
+			}
+		} finally {
+			if (release) {
+				await release();
 			}
 		}
 

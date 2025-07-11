@@ -1,5 +1,6 @@
 import { writeFile } from "node:fs/promises";
 import os from "node:os";
+import { createHash } from "node:crypto";
 /* eslint-disable @typescript-eslint/no-unsafe-function-type */
 /* eslint-disable no-await-in-loop */
 import {
@@ -57,9 +58,9 @@ export default class TestRunner {
 	): Promise<WPTReport> {
 		const proxyTestsMap = new Map<string, WPTReportTest>();
 
-		for (const [testPath, subtests] of testResults) {
-			const testReport: WPTReportTest = {
-				test: testPath,
+		for (const [path, subtests] of testResults) {
+			const report: WPTReportTest = {
+				test: path,
 				status: "OK",
 				message: null,
 				subtests: subtests.map((subtest) => ({
@@ -72,21 +73,21 @@ export default class TestRunner {
 			};
 
 			if (subtests.some((subtest) => subtest.status === WPT.TestStatus.FAIL)) {
-				testReport.status = "ERROR";
+				report.status = "ERROR";
 			}
 
-			proxyTestsMap.set(testPath, testReport);
+			proxyTestsMap.set(path, report);
 		}
 
 		// Default to Chrome results if we don't have results for a test or subtest
-		const chromeReportTestResults: WPTReportTest[] = [];
+		const chromeReportResults: WPTReportTest[] = [];
 		if (chromeReportData?.results) {
 			for (const chromeTest of chromeReportData.results) {
 				if (proxyTestsMap.has(chromeTest.test)) {
 					const proxyTest = proxyTestsMap.get(chromeTest.test);
-					if (proxyTest) chromeReportTestResults.push(proxyTest);
+					if (proxyTest) chromeReportResults.push(proxyTest);
 				} else {
-					chromeReportTestResults.push(chromeTest);
+					chromeReportResults.push(chromeTest);
 				}
 			}
 
@@ -96,11 +97,11 @@ export default class TestRunner {
 						(chromeTest) => chromeTest.test === testPath,
 					)
 				) {
-					chromeReportTestResults.push(testReport);
+					chromeReportResults.push(testReport);
 				}
 			}
 		} else {
-			chromeReportTestResults.push(...proxyTestsMap.values());
+			chromeReportResults.push(...proxyTestsMap.values());
 		}
 
 		const report: WPTReport = {
@@ -112,7 +113,7 @@ export default class TestRunner {
 				processor: os.arch(),
 			}),
 			time_start: timeStart,
-			results: chromeReportTestResults,
+			results: chromeReportResults,
 			time_end: timeEnd,
 		};
 
@@ -183,6 +184,17 @@ export default class TestRunner {
 		);
 		if (initResult.isErr()) {
 			return nErrAsync(initResult.error);
+		}
+
+		if (process.env.CI) {
+			const checkpointInfo = this.checkpointManager.getCheckpointInfo();
+			if (
+				checkpointInfo &&
+				checkpointInfo.completedTests >= checkpointInfo.totalTests
+			) {
+				log.info("All tests have been completed in other jobs.");
+				return nOkAsync(undefined);
+			}
 		}
 
 		const completed = this.checkpointManager.getCompletedTests();
@@ -484,53 +496,59 @@ export default class TestRunner {
 			other: totalOther,
 		};
 
-		if (this.options.outputFailed) {
-			const failed: FailedTest[] = [];
+		const checkpointInfo = this.checkpointManager.getCheckpointInfo();
+		if (
+			checkpointInfo &&
+			checkpointInfo.completedTests >= checkpointInfo.totalTests
+		) {
+			if (this.options.outputFailed) {
+				const failed: FailedTest[] = [];
 
-			for (const [testPath, testResultsList] of testResults) {
-				for (const testResult of testResultsList) {
-					if (testResult.status === WPT.TestStatus.FAIL) {
-						failed.push({
-							testPath,
-							testName: testResult.name,
-							status: testResult.status,
-							message: testResult.message,
-							stack: testResult.stack,
-						});
+				for (const [testPath, testResultsList] of testResults) {
+					for (const testResult of testResultsList) {
+						if (testResult.status === WPT.TestStatus.FAIL) {
+							failed.push({
+								testPath,
+								testName: testResult.name,
+								status: testResult.status,
+								message: testResult.message,
+								stack: testResult.stack,
+							});
+						}
 					}
+				}
+
+				resultsWithFailures.failedTests = failed;
+
+				if (typeof this.options.outputFailed === "string") {
+					await writeFile(
+						this.options.outputFailed,
+						JSON.stringify(failed, null, 2),
+					);
+				} else {
+					console.log(JSON.stringify(failed, null, 2));
 				}
 			}
 
-			resultsWithFailures.failedTests = failed;
-
-			if (typeof this.options.outputFailed === "string") {
-				await writeFile(
-					this.options.outputFailed,
-					JSON.stringify(failed, null, 2),
+			// Generate standardized WPT report if requested
+			if (this.options.report) {
+				const timeEnd = Date.now();
+				const wptReport = await TestRunner.generateWPTReport(
+					testResults,
+					chromeReportData,
+					timeStart,
+					timeEnd,
+					this.options,
 				);
-			} else {
-				console.log(JSON.stringify(failed, null, 2));
-			}
-		}
 
-		// Generate standardized WPT report if requested
-		if (this.options.report) {
-			const timeEnd = Date.now();
-			const wptReport = await TestRunner.generateWPTReport(
-				testResults,
-				chromeReportData,
-				timeStart,
-				timeEnd,
-				this.options,
-			);
-
-			if (typeof this.options.report === "string") {
-				await writeFile(
-					this.options.report,
-					JSON.stringify(wptReport, null, 2),
-				);
-			} else {
-				console.log(JSON.stringify(wptReport, null, 2));
+				if (typeof this.options.report === "string") {
+					await writeFile(
+						this.options.report,
+						JSON.stringify(wptReport, null, 2),
+					);
+				} else {
+					console.log(JSON.stringify(wptReport, null, 2));
+				}
 			}
 		}
 
@@ -692,6 +710,32 @@ export default class TestRunner {
 
 		// We don't have a need to run WASM tests and we don't have a test harness for a good reason
 		testPaths = testPaths.filter((test) => !test.test.startsWith("/wasm/"));
+
+		// Apply sharding if configured
+		if (this.options.shard && this.options.totalShards) {
+			const shard = this.options.shard;
+			const totalShards = this.options.totalShards;
+
+			if (shard < 1 || shard > totalShards) {
+				this.options.logger.error(
+					`Invalid shard configuration: shard ${shard} must be between 1 and ${totalShards}`,
+				);
+				return [];
+			}
+
+			// Use hash-based distribution for even load balancing
+			testPaths = testPaths.filter((test) => {
+				const hash = createHash("sha256").update(test.test).digest("hex");
+				const hashValue = parseInt(hash.slice(0, 8), 16);
+				const shardIndex = hashValue % totalShards;
+				return shardIndex === shard - 1;
+			});
+
+			this.options.logger.info(
+				`Running shard ${shard} of ${totalShards} (${testPaths.length} tests)`,
+			);
+		}
+
 		if (this.options.maxTests && typeof this.options.maxTests === "number")
 			testPaths = testPaths.slice(0, this.options.maxTests);
 		// Only use tests we can run in our runner

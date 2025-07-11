@@ -6,10 +6,6 @@ export interface TestCheckpoint {
 	 */
 	timestamp: number;
 	/**
-	 * Version identifier for checkpoint format compatibility
-	 */
-	version: string;
-	/**
 	 * Test configuration at the time of checkpoint
 	 */
 	config: {
