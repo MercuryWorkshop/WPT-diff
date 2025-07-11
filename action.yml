@@ -28,18 +28,18 @@ inputs:
   regression_check_workflow_name:
     description: "Workflow name to filter when looking for previous runs"
     required: false
-    default: "WPT-diff Tests"
+    default: "WPT Test Results"
 
 runs:
   using: "composite"
   steps:
-    - name: Setup pnpm
+    - name: Setup PNPM
       uses: pnpm/action-setup@v4
       if: ${{ inputs.run_js_setup == 'true' }}
       with:
         version: latest
 
-    - name: Setup Node.js with cache
+    - name: Setup Node.js With Cache
       uses: actions/setup-node@v4
       if: ${{ inputs.run_js_setup == 'true' }}
       with:
@@ -47,23 +47,23 @@ runs:
         cache: pnpm
         cache-dependency-path: ${{ inputs.location }}/pnpm-lock.yaml
 
-    - name: Install WPT-diff dependencies
+    - name: Install WPT-Diff Dependencies
       shell: bash
       working-directory: ${{ inputs.location }}
       run: pnpm install
 
-    - name: Download shard results
+    - name: Download Shard Results
       uses: actions/download-artifact@v4
       with:
-        pattern: wpt-shard-results-*
+        pattern: wpt-test-results-shard-*
         path: ./shard-results
 
-    - name: Combine reports
+    - name: Combine Reports
       shell: bash
       working-directory: ${{ inputs.location }}
       run: pnpm combine-reports ../shard-results ../final-reports
 
-    - name: Run regression check
+    - name: Run Regression Check
       if: ${{ inputs.enable_regression_check == 'true' && inputs.github_token != '' && inputs.github_repository != '' }}
       shell: bash
       working-directory: ${{ inputs.location }}
@@ -75,7 +75,7 @@ runs:
           "../final-reports/regression-fails.json" \
           "${{ inputs.regression_check_workflow_name }}"
 
-    - name: Upload final reports
+    - name: Upload Final Reports
       uses: actions/upload-artifact@v4
       with:
         name: ${{ inputs.artifact_name }}
