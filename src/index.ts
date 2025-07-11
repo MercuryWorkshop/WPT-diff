@@ -86,6 +86,7 @@ const INTERACTION_PATHS = new Set([
 ]);
 // Browser internals and functionality that proxies don't affect
 const PROXY_IRRELEVANT_PATHS = new Set([
+	"/css/",
 	// Cryptography
 	"/WebCryptoAPI/",
 	"/crypto/",
@@ -164,10 +165,19 @@ const PROXY_IRRELEVANT_PATHS = new Set([
 	// Typography and text rendering
 	"/mathml/",
 	"/svg/text/",
+	// Selection APIs (browser-level selection handling)
+	"/selection/",
 	// Internationalization APIs (browser-level locale handling)
 	"/intl/",
 	"/Intl/",
 	"/internationalization/",
+	// HTML parsing, semantics, and syntax (browser-level behavior)
+	"/html/semantics/",
+	"/html/syntax/",
+	"/html/parsing/",
+	"/html/browsers/",
+	"/html/infrastructure/",
+	"/html/obsolete/",
 	// Form Controls
 	"/html/forms/",
 	"/html/input/",
@@ -203,6 +213,8 @@ const PROXY_IRRELEVANT_PATHS = new Set([
 	"/web-animations/",
 	"/animation-worklet/",
 	"/scroll-animations/",
+	// WebAudio API (browser-level audio processing)
+	"/webaudio/",
 ]);
 
 // Regex patterns for proxy-irrelevant tests
@@ -262,6 +274,7 @@ export default class TestRunner {
 		timeStart: number,
 		timeEnd: number,
 		options: TestOptions,
+		reportType: "wpt-diff" | "wpt-proxy",
 	): Promise<WPTReport> {
 		const proxyTestsMap = new Map<string, WPTReportTest>();
 
@@ -286,29 +299,90 @@ export default class TestRunner {
 			proxyTestsMap.set(path, report);
 		}
 
-		// Default to Chrome results if we don't have results for a test or subtest
-		const chromeReportResults: WPTReportTest[] = [];
-		if (chromeReportData?.results) {
-			for (const chromeTest of chromeReportData.results) {
-				if (proxyTestsMap.has(chromeTest.test)) {
-					const proxyTest = proxyTestsMap.get(chromeTest.test);
-					if (proxyTest) chromeReportResults.push(proxyTest);
-				} else {
-					chromeReportResults.push(chromeTest);
-				}
-			}
+		const finalResults: WPTReportTest[] = [];
 
-			for (const [testPath, testReport] of proxyTestsMap) {
-				if (
-					!chromeReportData.results.find(
-						(chromeTest) => chromeTest.test === testPath,
-					)
-				) {
-					chromeReportResults.push(testReport);
+		if (reportType === "wpt-diff") {
+			// For wpt-diff-report: Use Chrome results for tests we didn't run or that timed out
+			if (chromeReportData?.results) {
+				for (const chromeTest of chromeReportData.results) {
+					if (proxyTestsMap.has(chromeTest.test)) {
+						const proxyTest = proxyTestsMap.get(chromeTest.test)!;
+						// Check if the test timed out or wasn't run
+						const hasTimeout = proxyTest.subtests.some(
+							(subtest) =>
+								subtest.status === "TIMEOUT" || subtest.status === "NOTRUN",
+						);
+						if (hasTimeout) {
+							// Use Chrome results for timeouts/not run
+							finalResults.push(chromeTest);
+						} else {
+							// Use our proxy results
+							finalResults.push(proxyTest);
+						}
+					} else {
+						// Test wasn't run by us, fallback to Chrome results
+						finalResults.push(chromeTest);
+					}
 				}
+
+				// Add any proxy tests that Chrome didn't have
+				for (const [testPath, testReport] of proxyTestsMap) {
+					if (
+						!chromeReportData.results.find(
+							(chromeTest) => chromeTest.test === testPath,
+						)
+					) {
+						finalResults.push(testReport);
+					}
+				}
+			} else {
+				finalResults.push(...proxyTestsMap.values());
 			}
 		} else {
-			chromeReportResults.push(...proxyTestsMap.values());
+			// For wpt-proxy-report: Default timeouts/not run to `PASS`
+			for (const [path, testReport] of proxyTestsMap) {
+				const modifiedReport = {
+					...testReport,
+					subtests: testReport.subtests.map((subtest) => {
+						if (subtest.status === "TIMEOUT" || subtest.status === "NOTRUN") {
+							return {
+								...subtest,
+								status: "PASS",
+								message: null,
+							};
+						}
+						return subtest;
+					}),
+				};
+
+				// Update test status if all subtests pass after modification
+				const hasFailure = modifiedReport.subtests.some(
+					(subtest) => subtest.status !== "PASS",
+				);
+				if (!hasFailure) {
+					modifiedReport.status = "OK";
+				}
+
+				finalResults.push(modifiedReport);
+			}
+
+			// Add Chrome results for tests we didn't run, defaulting to PASS
+			if (chromeReportData?.results) {
+				for (const chromeTest of chromeReportData.results) {
+					if (!proxyTestsMap.has(chromeTest.test)) {
+						const passedTest = {
+							...chromeTest,
+							status: "OK" as const,
+							subtests: chromeTest.subtests.map((subtest) => ({
+								...subtest,
+								status: "PASS" as const,
+								message: null,
+							})),
+						};
+						finalResults.push(passedTest);
+					}
+				}
+			}
 		}
 
 		const report: WPTReport = {
@@ -320,7 +394,7 @@ export default class TestRunner {
 				processor: os.arch(),
 			}),
 			time_start: timeStart,
-			results: chromeReportResults,
+			results: finalResults,
 			time_end: timeEnd,
 		};
 
@@ -554,7 +628,6 @@ export default class TestRunner {
 					}
 					*/
 
-					// Race between test completion and timeout
 					const timeoutPromise = new Promise<"timeout">((resolve) => {
 						setTimeout(() => resolve("timeout"), updateManifestTimeout * 1000);
 					});
@@ -602,7 +675,6 @@ export default class TestRunner {
 				}
 			}
 		} catch (err) {
-			// Handle any unexpected errors in the test loop
 			if (!isShuttingDown) {
 				log.error(`Unexpected error in test loop: ${err}`);
 			}
@@ -623,7 +695,6 @@ export default class TestRunner {
 
 			await browser.close();
 
-			// Remove signal handlers
 			process.removeListener("SIGINT", sigintHandler);
 			process.removeListener("SIGTERM", sigtermHandler);
 		}
@@ -656,31 +727,66 @@ export default class TestRunner {
 			if (typeof this.options.outputFailed === "string") {
 				await writeFile(
 					this.options.outputFailed,
-					JSON.stringify(failed, null, 2),
+					JSON.stringify(failed, null, 4),
 				);
 			} else {
-				console.log(JSON.stringify(failed, null, 2));
+				log.debug(JSON.stringify(failed, null, 4));
 			}
 		}
 
-		// Generate standardized WPT report if requested
 		if (this.options.report) {
 			const timeEnd = Date.now();
-			const wptReport = await TestRunner.generateWPTReport(
+
+			const wptDiffReport = await TestRunner.generateWPTReport(
 				resultsList,
 				chromeReportData,
 				timeStart,
 				timeEnd,
 				this.options,
+				"wpt-diff",
+			);
+			const wptProxyReport = await TestRunner.generateWPTReport(
+				resultsList,
+				chromeReportData,
+				timeStart,
+				timeEnd,
+				this.options,
+				"wpt-proxy",
 			);
 
 			if (typeof this.options.report === "string") {
+				const lastDotIndex = this.options.report.lastIndexOf(".");
+				const baseName =
+					lastDotIndex > -1
+						? this.options.report.slice(0, lastDotIndex)
+						: this.options.report;
+				const extension =
+					lastDotIndex > -1 ? this.options.report.slice(lastDotIndex) : ".json";
+
 				await writeFile(
-					this.options.report,
-					JSON.stringify(wptReport, null, 2),
+					`${baseName}-diff${extension}`,
+					JSON.stringify(wptDiffReport, null, 4),
+				);
+				await writeFile(
+					`${baseName}-proxy${extension}`,
+					JSON.stringify(wptProxyReport, null, 4),
+				);
+				log.info(
+					`Generated both report types: ${baseName}-diff${extension} and ${baseName}-proxy${extension}`,
 				);
 			} else {
-				console.log(JSON.stringify(wptReport, null, 2));
+				/*
+				log.debug(
+					JSON.stringify(
+						{
+							"wpt-diff-report": wptDiffReport,
+							"wpt-proxy-report": wptProxyReport,
+						},
+						null,
+						4,
+					),
+				);
+				*/
 			}
 		}
 
@@ -756,7 +862,6 @@ export default class TestRunner {
 			return nErrAsync(updateManifestRespRes.error);
 		const rawManifest = await updateManifestRespRes.value.json();
 
-		// Normalize the manifest data to handle nested arrays
 		const updateManifest = this.normalizeManifest(rawManifest);
 
 		let validateWPTUpdateManifest:

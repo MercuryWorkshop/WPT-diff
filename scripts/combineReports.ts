@@ -1,20 +1,20 @@
 /**
- * @fileoverview Combines multiple WPT report shards into a single comprehensive report.
- *
- * This utility is used in CI/CD pipelines to merge test results from parallel
- * test executions into unified reports for analysis and archival.
- *
+ * @fileoverview Combines multiple WPT report shards into the final report
+
  * @see https://github.com/web-platform-tests/wpt
  */
 
-import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
-import { join } from "node:path";
-import { Logger } from "tslog";
-import { Command } from "commander";
 import { Result as nResult, ResultAsync as nResultAsync, ok as nOk, err as nErr } from 'neverthrow';
+import { Logger } from "tslog";
+import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
+import { createWriteStream } from "node:fs";
+import { join } from "node:path";
+import { pipeline } from "node:stream/promises";
+import { Command } from "commander";
+import { JsonStreamStringify } from "json-stream-stringify";
 
-import type { WPTReport } from "../types/index.d.ts";
-import type { FailedTest } from "../types/index.d.ts";
+import type { WPTReport, FailedTest } from "../types/index.d.ts";
+import type { ShardReportsReadResult } from "../types/reports.d.ts";
 
 /**
  * Configuration options for combining report shards
@@ -116,7 +116,7 @@ class ReportCombiner {
 	 * @param inputDir Directory containing shard subdirectories
 	 * @returns A *Neverthrow*-wrapped Result containing arrays of WPT reports and failed tests, or an error message if reading fails
 	 */
-	private readShardReports(inputDir: string): nResultAsync<{ wptReports: WPTReport[]; failedTests: FailedTest[]; successfulShards: number }, string> {
+	private readShardReports(inputDir: string): nResultAsync<ShardReportsReadResult, string> {
 		return nResultAsync.fromPromise(
 			readdir(inputDir, { withFileTypes: true }),
 			(err) => `Failed to read input directory '${inputDir}': ${err}`
@@ -132,7 +132,8 @@ class ReportCombiner {
 				return nErr(`No shard directories found in '${inputDir}'`);
 			}
 
-			const wptReports: WPTReport[] = [];
+			const wptDiffReports: WPTReport[] = [];
+			const wptProxyReports: WPTReport[] = [];
 			const failedTests: FailedTest[] = [];
 			let successfulShards = 0;
 
@@ -140,22 +141,32 @@ class ReportCombiner {
 			const shardPromises = shardDirs.map(async (shardDir) => {
 				const shardPath = join(inputDir, shardDir);
 
-				const reportNRes = await this.readJsonFile<WPTReport>(join(shardPath, "wpt-report.json"));
+				// Read both report types
+				const diffReportNRes = await this.readJsonFile<WPTReport>(join(shardPath, "wpt-report-diff.json"));
+				const proxyReportNRes = await this.readJsonFile<WPTReport>(join(shardPath, "wpt-report-proxy.json"));
 				const failedNRes = await this.readJsonFile<FailedTest[]>(join(shardPath, "failed-tests.json"));
 
-				return { shardDir, reportNRes, failedNRes };
+				return { shardDir, diffReportNRes, proxyReportNRes, failedNRes };
 			});
 
 			return nResultAsync.fromPromise(
 				Promise.all(shardPromises),
 				(err) => `Failed to process shard reports: ${err}`
 			).map((shardResults) => {
-				for (const { shardDir, reportNRes, failedNRes } of shardResults) {
-					if (reportNRes.isOk()) {
-						wptReports.push(reportNRes.value);
+				for (const { shardDir, diffReportNRes, proxyReportNRes, failedNRes } of shardResults) {
+					if (diffReportNRes.isOk()) {
+						wptDiffReports.push(diffReportNRes.value);
 					} else {
-						this.log.warn(`Failed to read WPT report from shard '${shardDir}'`, {
-							error: reportNRes.error
+						this.log.warn(`Failed to read WPT diff report from shard '${shardDir}'`, {
+							error: diffReportNRes.error
+						});
+					}
+
+					if (proxyReportNRes.isOk()) {
+						wptProxyReports.push(proxyReportNRes.value);
+					} else {
+						this.log.warn(`Failed to read WPT proxy report from shard '${shardDir}'`, {
+							error: proxyReportNRes.error
 						});
 					}
 
@@ -170,40 +181,64 @@ class ReportCombiner {
 				}
 
 				this.log.info(`Successfully processed ${successfulShards} shard results`);
-				return { wptReports, failedTests, successfulShards };
+				return { wptDiffReports, wptProxyReports, failedTests, successfulShards };
 			});
 		});
+	}
+
+	/**
+	 * Writes a large JSON object to file using streaming to avoid memory issues
+	 *
+	 * @param filePath Path where the JSON file will be written
+	 * @param data The data object to write
+	 * @param indent Number of spaces for indentation (default: 4)
+	 * @returns A *Neverthrow*-wrapped Result indicating success, or an error message if writing fails
+	 */
+	private writeJsonFile(filePath: string, data: any, indent: number = 4): nResultAsync<void, string> {
+		return nResultAsync.fromPromise(
+			(async () => {
+				// Use streaming for large WPT reports to avoid memory issues
+				if (data.results && Array.isArray(data.results) && data.results.length > 1000) {
+					this.log.debug(`Writing large JSON file with streaming to '${filePath}' (${data.results.length} results)`);
+					
+					const jsonStream = new JsonStreamStringify(data, undefined, indent);
+					const writeStream = createWriteStream(filePath);
+					
+					await pipeline(jsonStream, writeStream);
+				} else {
+					// For smaller files, use regular writeFile
+					await writeFile(filePath, JSON.stringify(data, null, indent));
+				}
+			})(),
+			(err) => `Failed to write JSON file '${filePath}': ${err}`
+		);
 	}
 
 	/**
 	 * Writes the combined reports to the output directory
 	 *
 	 * @param outputDir Directory where combined reports will be written
-	 * @param combinedReport Combined WPT report
+	 * @param combinedDiffReport Combined WPT diff report
+	 * @param combinedProxyReport Combined WPT proxy report
 	 * @param failedTests Array of all failed tests
 	 * @returns A *Neverthrow*-wrapped Result indicating success, or an error message if writing fails
 	 */
-	private writeReports(outputDir: string, combinedReport: WPTReport, failedTests: FailedTest[]): nResultAsync<void, string> {
+	private writeReports(outputDir: string, combinedDiffReport: WPTReport, combinedProxyReport: WPTReport, failedTests: FailedTest[]): nResultAsync<void, string> {
 		return nResultAsync.fromPromise(
 			mkdir(outputDir, { recursive: true }),
 			(err) => `Failed to create output directory '${outputDir}': ${err}`
 		).andThen(() => {
-			const wptOutputPath = join(outputDir, "wpt-report.json");
+			const wptDiffOutputPath = join(outputDir, "wpt-report-diff.json");
+			const wptProxyOutputPath = join(outputDir, "wpt-report-proxy.json");
 			const failedOutputPath = join(outputDir, "failed-tests.json");
 
-			const writeWptNRes = nResultAsync.fromPromise(
-				writeFile(wptOutputPath, JSON.stringify(combinedReport, null, 2)),
-				(err) => `Failed to write WPT report to '${wptOutputPath}': ${err}`
-			);
+			const writeWptDiffNRes = this.writeJsonFile(wptDiffOutputPath, combinedDiffReport);
+			const writeWptProxyNRes = this.writeJsonFile(wptProxyOutputPath, combinedProxyReport);
+			const writeFailedNRes = this.writeJsonFile(failedOutputPath, failedTests);
 
-			const writeFailedNRes = nResultAsync.fromPromise(
-				writeFile(failedOutputPath, JSON.stringify(failedTests, null, 2)),
-				(err) => `Failed to write failed tests to '${failedOutputPath}': ${err}`
-			);
-
-			return nResultAsync.combine([writeWptNRes, writeFailedNRes]).map(() => {
-				const totalTests = combinedReport.results.length;
-				const totalSubtests = combinedReport.results.reduce((sum, test) => {
+			return nResultAsync.combine([writeWptDiffNRes, writeWptProxyNRes, writeFailedNRes]).map(() => {
+				const totalTests = combinedDiffReport.results.length;
+				const totalSubtests = combinedDiffReport.results.reduce((sum, test) => {
 					return sum + (test.subtests?.length || 0);
 				}, 0);
 
@@ -211,10 +246,11 @@ class ReportCombiner {
 					totalTestFiles: totalTests,
 					totalSubtests: totalSubtests,
 					failedTests: failedTests.length,
-					timeStart: new Date(combinedReport.time_start).toISOString(),
-					timeEnd: new Date(combinedReport.time_end).toISOString(),
+					timeStart: new Date(combinedDiffReport.time_start).toISOString(),
+					timeEnd: new Date(combinedDiffReport.time_end).toISOString(),
 					outputFiles: {
-						wptReport: wptOutputPath,
+						wptDiffReport: wptDiffOutputPath,
+						wptProxyReport: wptProxyOutputPath,
 						failedTests: failedOutputPath,
 					},
 				});
@@ -237,17 +273,22 @@ class ReportCombiner {
 		});
 
 		return this.readShardReports(inputDir)
-			.andThen(({ wptReports, failedTests }) => {
-				if (wptReports.length === 0) {
+			.andThen(({ wptDiffReports, wptProxyReports, failedTests }) => {
+				if (wptDiffReports.length === 0 && wptProxyReports.length === 0) {
 					return nErr("No WPT reports found to combine");
 				}
 
-				const combineNRes = this.combineWPTReports(wptReports);
-				if (combineNRes.isErr()) {
-					return nErr(combineNRes.error);
+				const combineDiffNRes = this.combineWPTReports(wptDiffReports);
+				if (combineDiffNRes.isErr()) {
+					return nErr(`Failed to combine diff reports: ${combineDiffNRes.error}`);
 				}
 
-				return this.writeReports(outputDir, combineNRes.value, failedTests);
+				const combineProxyNRes = this.combineWPTReports(wptProxyReports);
+				if (combineProxyNRes.isErr()) {
+					return nErr(`Failed to combine proxy reports: ${combineProxyNRes.error}`);
+				}
+
+				return this.writeReports(outputDir, combineDiffNRes.value, combineProxyNRes.value, failedTests);
 			});
 	}
 
