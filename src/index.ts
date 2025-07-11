@@ -22,7 +22,6 @@ import { WPT } from "#types/wpt.ts";
 import { ProgressReporter } from "#util/cli/progressReporter.ts";
 import forwardConsole from "#util/forwardConsole.ts";
 import createTestIterator from "#util/testIterator.ts";
-import { CheckpointManager } from "#util/CheckpointManager.ts";
 import { performHealthChecks } from "#util/healthChecks.ts";
 import { getWPTTestPaths } from "#util/getTestPaths.ts";
 import { enterNewUrl } from "./page/enterNewUrl.ts";
@@ -37,16 +36,20 @@ const DEFAULT_WPT_TIMEOUT = 10;
 export default class TestRunner {
 	private initialized = false;
 	private options: TestOptions;
-	private checkpointManager: CheckpointManager;
-	private checkpointInterval: number;
 
-	constructor(options: TestOptions, checkpointInterval?: number) {
-		this.options = options;
-		this.checkpointInterval = checkpointInterval || 100;
-		this.checkpointManager = new CheckpointManager(
-			options,
-			this.checkpointInterval,
-		);
+	static mapTestStatusToJSON(status: number): string {
+		switch (status) {
+			case WPT.TestStatus.PASS:
+				return "PASS";
+			case WPT.TestStatus.FAIL:
+				return "FAIL";
+			case WPT.TestStatus.TIMEOUT:
+				return "TIMEOUT";
+			case WPT.TestStatus.NOTRUN:
+				return "NOTRUN";
+			default:
+				return "FAIL";
+		}
 	}
 
 	static async generateWPTReport(
@@ -120,13 +123,17 @@ export default class TestRunner {
 		return report;
 	}
 
+	constructor(options: TestOptions) {
+		this.options = options;
+	}
+
 	/**
 	 * Starts the test for WPT-diff
 	 *
 	 * @param headless Runs the browser in headless mode if enabled (only useful for debugging)
 	 * @param maxTests The max number of tests to execute
 	 * @param silent Enables verbose logging
-	 * @param enablePlaywrightTestRunner If true, generates Playwright test cases instead of running tests directly
+	 * @param enablePlaywrightTestRunner If `true`, generates Playwright test cases instead of running tests directly
 	 */
 	async startTest(): Promise<
 		ResultAsync<
@@ -163,12 +170,11 @@ export default class TestRunner {
 			chromeDataResult.value;
 		let paths = rawTestPaths;
 
-		// Store Chrome baseline data for comparison if outputFailed is enabled
-		// TODO: Implement baseline comparison when outputFailed is enabled
+		// Store Chrome baseline data for comparison if `outputFailed` is enabled
+		// TODO: Implement baseline comparison when `outputFailed` is enabled
 
 		// Store full Chrome report data if report generation is enabled
 		const chromeReportData = this.options.report ? reportData : null;
-		this.checkpointManager.setChromeReportData(chromeReportData);
 
 		const updateManifestRes = await this.getWPTUpdateManifest();
 		if (updateManifestRes.isErr()) return nErrAsync(updateManifestRes.error);
@@ -177,57 +183,6 @@ export default class TestRunner {
 		paths = this.filterTests(paths, testTimeoutMap);
 
 		const timeStart = Date.now();
-
-		const initResult = await this.checkpointManager.initialize(
-			paths.length,
-			timeStart,
-		);
-		if (initResult.isErr()) {
-			return nErrAsync(initResult.error);
-		}
-
-		if (process.env.CI) {
-			const checkpointInfo = this.checkpointManager.getCheckpointInfo();
-			if (
-				checkpointInfo &&
-				checkpointInfo.completedTests >= checkpointInfo.totalTests
-			) {
-				log.info("All tests have been completed in other jobs.");
-				return nOkAsync(undefined);
-			}
-		}
-
-		const completed = this.checkpointManager.getCompletedTests();
-		if (completed.length >= paths.length) {
-			log.info("Batch not needed (all tests already completed)");
-			return nOkAsync({
-				results: {
-					pass: 0,
-					fail: 0,
-					other: 0,
-				},
-			});
-		}
-
-		const remaining = paths.filter(
-			(test) => !this.checkpointManager.isTestCompleted(test.test),
-		);
-
-		if (remaining.length === 0) {
-			log.info("Batch not needed (no remaining tests)");
-			return nOkAsync({
-				results: {
-					pass: 0,
-					fail: 0,
-					other: 0,
-				},
-			});
-		}
-
-		log.info(
-			`Resuming with ${remaining.length} remaining tests (${completed.length} already completed)`,
-		);
-		paths = remaining;
 
 		const browser = await chromium.launch({
 			headless: process.env.CI === "true" || !this.options.debug,
@@ -248,14 +203,14 @@ export default class TestRunner {
 			log,
 		});
 
-		const testResults = this.checkpointManager.getTestResults();
+		const resultsList = new Map<string, WPTTestResult[]>();
 		let currentTestPath = "";
 		let currentTestResolve: (() => void) | null = null;
 
 		const collector = new WptCollector({
 			mainPage: page,
 			underProxy: this.options.underProxy,
-			testResults: testResults,
+			testResults: resultsList,
 			log,
 		});
 		await collector.start();
@@ -287,18 +242,8 @@ export default class TestRunner {
 			if (isShuttingDown) return;
 			isShuttingDown = true;
 
-			log.info(`\nReceived ${signal}, shutting down gracefully...`);
+			log.info(`\nReceived ${signal} (shutting down gracefully)`);
 			progressReporter.finish();
-
-			// Save checkpoint before closing
-			const shutdownResult = await this.checkpointManager.shutdown();
-			if (shutdownResult.isErr()) {
-				log.error(
-					`Failed to save checkpoint during shutdown: ${shutdownResult.error}`,
-				);
-			} else {
-				log.info("Checkpoint saved successfully");
-			}
 
 			// Close browser
 			try {
@@ -327,7 +272,7 @@ export default class TestRunner {
 		try {
 			for (const info of testIterator) {
 				if (isShuttingDown) break;
-				if (this.checkpointManager.isTestCompleted(info.testPath)) {
+				if (resultsList.has(info.testPath)) {
 					continue;
 				}
 
@@ -379,26 +324,26 @@ export default class TestRunner {
 					// This is only needed if the timeout is not already "long" (`60` seconds)
 					// @see https://web-platform-tests.org/writing-tests/testharness-api.html#harness-timeout
 					/*
-				if (updateManifestTimeout === 60) {
-					const timeoutSymbol = Symbol("timeout");
-					const metaTimeoutLocator = page.locator(
-						'meta[name="timeout"][content="long"]',
-					);
-					const timeoutCountOrTimeout = await Promise.race([
-						metaTimeoutLocator.count(),
-						new Promise<typeof timeoutSymbol>((resolve) => {
-							setTimeout(() => resolve(timeoutSymbol), 1000);
-						}),
-					]);
-					if (timeoutCountOrTimeout === timeoutSymbol) {
-						log.warn("The locator waited for too long");
-					} else if (timeoutCountOrTimeout > 0) {
-						log.debug(
-							"Increasing the timeout to long, because the harness tag was found",
+					if (updateManifestTimeout === 60) {
+						const timeoutSymbol = Symbol("timeout");
+						const metaTimeoutLocator = page.locator(
+							'meta[name="timeout"][content="long"]',
 						);
+						const timeoutCountOrTimeout = await Promise.race([
+							metaTimeoutLocator.count(),
+							new Promise<typeof timeoutSymbol>((resolve) => {
+								setTimeout(() => resolve(timeoutSymbol), 1000);
+							}),
+						]);
+						if (timeoutCountOrTimeout === timeoutSymbol) {
+							log.warn("The locator waited for too long");
+						} else if (timeoutCountOrTimeout > 0) {
+							log.debug(
+								"Increasing the timeout to long, because the harness tag was found",
+							);
+						}
 					}
-				}
-				*/
+					*/
 
 					// Race between test completion and timeout
 					const timeoutPromise = new Promise<"timeout">((resolve) => {
@@ -411,7 +356,7 @@ export default class TestRunner {
 					]);
 
 					const completedInTime = completionResult === "completed";
-					const result = testResults.get(info.testPath) || [];
+					const result = resultsList.get(info.testPath) || [];
 
 					if (!completedInTime && currentTestResolve) {
 						const timeoutResult: WPTTestResult = {
@@ -421,14 +366,9 @@ export default class TestRunner {
 						};
 
 						const timeoutRes = [timeoutResult];
-						testResults.set(info.testPath, timeoutRes);
+						resultsList.set(info.testPath, timeoutRes);
 
 						progressReporter.testTimeout(info.testPath);
-
-						await this.checkpointManager.recordTestCompletion(
-							info.testPath,
-							timeoutRes,
-						);
 
 						if (info.testsProcessed === 0)
 							return nErrAsync(
@@ -437,25 +377,19 @@ export default class TestRunner {
 					} else {
 						progressReporter.endTest(result);
 					}
-
-					await this.checkpointManager.recordTestCompletion(
-						info.testPath,
-						result,
-					);
-				} catch (error) {
+				} catch (err) {
 					if (isShuttingDown) break;
 
 					// Check if error is due to browser being closed
-					const errorMsg =
-						error instanceof Error ? error.message : String(error);
+					const errMsg = err instanceof Error ? err.message : String(err);
 					if (
-						errorMsg.includes("Target page, context or browser has been closed")
+						errMsg.includes("Target page, context or browser has been closed")
 					) {
 						log.debug(`Browser closed while testing ${info.testPath}`);
 						break;
 					}
 
-					progressReporter.error(info.testPath, error);
+					progressReporter.error(info.testPath, err);
 				}
 			}
 		} catch (err) {
@@ -468,7 +402,7 @@ export default class TestRunner {
 		let totalPass = 0;
 		let totalFail = 0;
 		let totalOther = 0;
-		for await (const [_key, val] of testResults)
+		for (const [_key, val] of resultsList)
 			for (const test of val) {
 				if (test.status === WPT.TestStatus.PASS) totalPass++;
 				else if (test.status === WPT.TestStatus.FAIL) totalFail++;
@@ -479,11 +413,6 @@ export default class TestRunner {
 			progressReporter.finish();
 
 			await browser.close();
-
-			const shutdownResult = await this.checkpointManager.shutdown();
-			if (shutdownResult.isErr()) {
-				log.error(`Failed to save final checkpoint: ${shutdownResult.error}`);
-			}
 
 			// Remove signal handlers
 			process.removeListener("SIGINT", sigintHandler);
@@ -496,59 +425,53 @@ export default class TestRunner {
 			other: totalOther,
 		};
 
-		const checkpointInfo = this.checkpointManager.getCheckpointInfo();
-		if (
-			checkpointInfo &&
-			checkpointInfo.completedTests >= checkpointInfo.totalTests
-		) {
-			if (this.options.outputFailed) {
-				const failed: FailedTest[] = [];
+		if (this.options.outputFailed) {
+			const failed: FailedTest[] = [];
 
-				for (const [testPath, testResultsList] of testResults) {
-					for (const testResult of testResultsList) {
-						if (testResult.status === WPT.TestStatus.FAIL) {
-							failed.push({
-								testPath,
-								testName: testResult.name,
-								status: testResult.status,
-								message: testResult.message,
-								stack: testResult.stack,
-							});
-						}
+			for (const [path, results] of resultsList) {
+				for (const result of results) {
+					if (result.status === WPT.TestStatus.FAIL) {
+						failed.push({
+							testPath: path,
+							testName: result.name,
+							status: result.status,
+							message: result.message,
+							stack: result.stack,
+						});
 					}
-				}
-
-				resultsWithFailures.failedTests = failed;
-
-				if (typeof this.options.outputFailed === "string") {
-					await writeFile(
-						this.options.outputFailed,
-						JSON.stringify(failed, null, 2),
-					);
-				} else {
-					console.log(JSON.stringify(failed, null, 2));
 				}
 			}
 
-			// Generate standardized WPT report if requested
-			if (this.options.report) {
-				const timeEnd = Date.now();
-				const wptReport = await TestRunner.generateWPTReport(
-					testResults,
-					chromeReportData,
-					timeStart,
-					timeEnd,
-					this.options,
-				);
+			resultsWithFailures.failedTests = failed;
 
-				if (typeof this.options.report === "string") {
-					await writeFile(
-						this.options.report,
-						JSON.stringify(wptReport, null, 2),
-					);
-				} else {
-					console.log(JSON.stringify(wptReport, null, 2));
-				}
+			if (typeof this.options.outputFailed === "string") {
+				await writeFile(
+					this.options.outputFailed,
+					JSON.stringify(failed, null, 2),
+				);
+			} else {
+				console.log(JSON.stringify(failed, null, 2));
+			}
+		}
+
+		// Generate standardized WPT report if requested
+		if (this.options.report) {
+			const timeEnd = Date.now();
+			const wptReport = await TestRunner.generateWPTReport(
+				resultsList,
+				chromeReportData,
+				timeStart,
+				timeEnd,
+				this.options,
+			);
+
+			if (typeof this.options.report === "string") {
+				await writeFile(
+					this.options.report,
+					JSON.stringify(wptReport, null, 2),
+				);
+			} else {
+				console.log(JSON.stringify(wptReport, null, 2));
 			}
 		}
 
@@ -704,14 +627,13 @@ export default class TestRunner {
 			});
 		} else if (this.options.scope) {
 			testPaths = testPaths.filter((test) =>
-				test.test.startsWith(this.options.scope),
+				test.test.startsWith(this.options.scope!),
 			);
 		}
 
-		// We don't have a need to run WASM tests and we don't have a test harness for a good reason
+		// We don't have a need to run WASM tests and we don't have a test harness for a good reason (we will fall back on Chrome official results)
 		testPaths = testPaths.filter((test) => !test.test.startsWith("/wasm/"));
 
-		// Apply sharding if configured
 		if (this.options.shard && this.options.totalShards) {
 			const shard = this.options.shard;
 			const totalShards = this.options.totalShards;
@@ -741,21 +663,6 @@ export default class TestRunner {
 		// Only use tests we can run in our runner
 		testPaths = testPaths.filter((test) => testTimeoutMap.has(test.test));
 		return testPaths;
-	}
-
-	static mapTestStatusToJSON(status: number): string {
-		switch (status) {
-			case WPT.TestStatus.PASS:
-				return "PASS";
-			case WPT.TestStatus.FAIL:
-				return "FAIL";
-			case WPT.TestStatus.TIMEOUT:
-				return "TIMEOUT";
-			case WPT.TestStatus.NOTRUN:
-				return "NOTRUN";
-			default:
-				return "FAIL";
-		}
 	}
 
 	private normalizeManifest(rawManifest: any): any {

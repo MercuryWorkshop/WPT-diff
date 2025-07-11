@@ -13,11 +13,7 @@ export const ParsedTomlConfigSchema = z.object({
 			api_base_url: z.string(),
 		}),
 	}),
-	ci: z
-		.object({
-			checkpoint_interval: z.number().optional(),
-		})
-		.optional(),
+	ci: z.object({}).optional(),
 });
 
 export type ParsedTomlConfig = z.infer<typeof ParsedTomlConfigSchema>;

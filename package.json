@@ -10,10 +10,12 @@
     "start": "tsx src/cli.ts",
     "dev": "tsx --watch src/cli.ts",
     "fmt": "biome format --write .",
+    "wpt:serve": "cd wpt && ./wpt serve --no-h2",
     "prepare": "ts-patch install",
     "generate:validators": "typia generate --input src/util/validators --output generatedValidators",
     "submodule:bump": "git submodule update --remote --merge",
-    "combine-reports": "tsx src/util/combineReports.ts"
+    "combine-reports": "tsx scripts/combineReports.ts",
+    "regression-check": "tsx scripts/regressionCheck.ts"
   },
   "keywords": [],
   "author": "",
@@ -33,10 +35,11 @@
     "chalk": "^5.4.1",
     "commander": "^14.0.0",
     "console-with-style": "^1.1.0",
+    "libarchive.js": "^2.0.2",
     "neverthrow": "^8.2.0",
+    "octokit": "^5.0.3",
     "ora": "^8.2.0",
     "playwright": "^1.53.2",
-    "proper-lockfile": "^4.1.2",
     "simple-git": "^3.28.0",
     "smol-toml": "^1.4.1",
     "tslog": "^4.9.3",
@@ -47,6 +50,7 @@
     "#types/*": "./types/*",
     "#page/*": "./src/page/*",
     "#routeInterceptors/*": "./src/routeInterceptors/*",
-    "#util/*": "./src/util/*"
+    "#util/*": "./src/util/*",
+    "#scripts/*": "./scripts/*"
   }
 }

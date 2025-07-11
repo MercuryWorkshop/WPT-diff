@@ -1,5 +1,5 @@
 name: "WPT-diff Test Runner"
-description: "Run Web Platform Tests against a proxy and collect failed results"
+description: "Run Web Platform Tests against a web proxy with sharding support, standard WPT reports, failed test collection, and regression checking"
 author: "MercuryWorkshop"
 inputs:
   location:
@@ -41,26 +41,30 @@ inputs:
     description: "Base URL for WPT API"
     required: false
     default: "https://wpt.fyi"
-  enable_batching:
-    description: "Enable test batching for long-running tests"
-    required: false
-    default: "false"
-  checkpoint_file:
-    description: "Checkpoint file path for saving/resuming test progress (only used if batching is enabled)"
-    required: false
-    default: ""
-  resume_from:
-    description: "Resume from a previous checkpoint file (only used if batching is enabled)"
-    required: false
-    default: ""
-  job_index:
-    description: "Current job index for splitting tests (0-based, only used if batching is enabled)"
+  shard_index:
+    description: "Current shard index for splitting tests"
     required: false
     default: "0"
-  total_jobs:
-    description: "Total number of jobs for splitting tests (only used if batching is enabled)"
+  total_shards:
+    description: "Total number of shards for splitting tests"
     required: false
     default: "1"
+  enable_regression_check:
+    description: "Whether to run regression check against previous workflow results"
+    required: false
+    default: false
+  github_repository:
+    description: "GitHub repository for regression check"
+    required: false
+    default: ""
+  github_token:
+    description: "GitHub token for accessing previous workflow artifacts"
+    required: false
+    default: ""
+  regression_check_workflow_name:
+    description: "Workflow name to filter when looking for previous runs"
+    required: false
+    default: "WPT-diff Tests"
 
 runs:
   using: "composite"
@@ -69,134 +73,56 @@ runs:
       uses: actions/checkout@v4
       with:
         repository: web-platform-tests/wpt
-        path: "${{ inputs.location }}/wpt"
+        path: ${{ inputs.location }}/wpt
         ref: main
         fetch-depth: 1
 
     - name: Setup pnpm
       uses: pnpm/action-setup@v4
-      if: "${{ inputs.run_js_setup }}"
+      if: ${{ inputs.run_js_setup }}
       with:
         version: latest
 
     - name: Setup Node.js with cache
       uses: actions/setup-node@v4
-      if: "${{ inputs.run_js_setup }}"
+      if: ${{ inputs.run_js_setup }}
       with:
         node-version: latest
-        cache: "pnpm"
-        cache-dependency-path: "${{ inputs.location }}/pnpm-lock.yaml"
-
-    - name: Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.x"
-
-    - name: Setup WPT hosts
-      shell: bash
-      working-directory: "${{ inputs.location }}/wpt"
-      run: |
-        ./wpt make-hosts-file | sudo tee -a /etc/hosts
+        cache: pnpm
+        cache-dependency-path: ${{ inputs.location }}/pnpm-lock.yaml
 
     - name: Install WPT-diff dependencies
       shell: bash
-      working-directory: "${{ inputs.location }}"
-      run: |
-        pnpm install
-        pnpm exec playwright install chromium
+      working-directory: ${{ inputs.location }}
+      run: pnpm install
 
-    - name: Generate validators
-      shell: bash
-      working-directory: "${{ inputs.location }}"
-      run: |
-        pnpm generate:validators
-
-    - name: Download previous checkpoint if resuming
-      if: ${{ inputs.enable_batching == 'true' && inputs.resume_from != '' }}
+    # Combine and regression check
+    - name: Download shard results
       uses: actions/download-artifact@v4
       with:
-        name: "${{ inputs.resume_from }}"
-        path: "${{ inputs.location }}"
+        pattern: wpt-shard-results-*
+        path: ./shard-results
 
-    - name: Start WPT server
+    - name: Combine reports
       shell: bash
-      working-directory: "${{ inputs.location }}/wpt"
-      run: |
-        ./wpt serve --no-h2 &
-        WPT_PID=$!
-        echo "WPT_PID=$WPT_PID" >> $GITHUB_ENV
-        sleep 10
+      working-directory: ${{ inputs.location }}
+      run: pnpm combine-reports ../shard-results ../final-reports
 
-    - name: Create WPT-Diff config
+    - name: Run regression check
+      if: ${{ inputs.github_token != '' && inputs.github_repository != '' }}
       shell: bash
-      working-directory: "${{ inputs.location }}"
+      working-directory: ${{ inputs.location }}
       run: |
-        if [ "${{ inputs.wpt_max_tests }}" = "all" ]; then
-          MAX_TESTS='"all"'
-        else
-          MAX_TESTS="${{ inputs.wpt_max_tests }}"
-        fi
+        pnpm regression-check \
+          "${{ inputs.github_repository }}" \
+          "${{ inputs.github_token }}" \
+          "../final-reports/failed-tests.json" \
+          "../final-reports/regression-fails.json" \
+          "${{ inputs.regression_check_workflow_name }}"
 
-        cat > config.toml << EOF
-        [debug]
-        debug = ${{ inputs.debug }}
-        verbose = ${{ inputs.verbose }}
-
-        [wpt]
-        max_tests = $MAX_TESTS
-        under_proxy = ${{ inputs.under_proxy }}
-
-        [wpt.urls]
-        proxy_base_url = "${{ inputs.proxy_base_url }}"
-        tests_base_url = "${{ inputs.wpt_tests_base_url }}"
-        api_base_url = "${{ inputs.wpt_api_base_url }}"
-        EOF
-
-    - name: Run WPT-Diff tests
-      uses: coactions/setup-xvfb@v1
-      with:
-        working-directory: "${{ inputs.location }}"
-        run: |
-          export CI=true
-
-          CMD="pnpm start --report wpt-report.json --output-failed failed-tests.json"
-
-          if [ "${{ inputs.enable_batching }}" = "true" ]; then
-            if [ "${{ inputs.checkpoint_file }}" != "" ]; then
-              CMD="$CMD --checkpoint-file ${{ inputs.checkpoint_file }}"
-            fi
-
-            if [ "${{ inputs.resume_from }}" != "" ] && [ -f "${{ inputs.resume_from }}" ]; then
-              CMD="$CMD --resume-from ${{ inputs.resume_from }}"
-            fi
-            
-            if [ "${{ inputs.job_index }}" != "" ] && [ "${{ inputs.total_jobs }}" != "" ]; then
-              CMD="$CMD --shard ${{ inputs.job_index }} --total-shards ${{ inputs.total_jobs }}"
-            fi
-          fi
-
-          $CMD
-
-    - name: Stop WPT server
-      shell: bash
-      working-directory: "${{ inputs.location }}"
-      run: |
-        if [ ! -z "$WPT_PID" ]; then
-          kill $WPT_PID || true
-        fi
-
-    - name: Upload WPT reports
+    - name: Upload final reports
       uses: actions/upload-artifact@v4
       with:
-        name: "${{ inputs.artifact_name }}"
-        path: |
-          "${{ inputs.location }}/wpt-report.json"
-          "${{ inputs.location }}/failed-tests.json"
-        if-no-files-found: ignore
-
-    - name: Upload checkpoint file if created
-      if: ${{ inputs.enable_batching == 'true' && inputs.checkpoint_file != '' }}
-      uses: actions/upload-artifact@v4
-      with:
-        name: "checkpoint-${{ inputs.job_index }}"
-        path: "${{ inputs.location }}/${{ inputs.checkpoint_file }}"
+        name: ${{ inputs.artifact_name }}
+        path: final-reports/
+        retention-days: 90

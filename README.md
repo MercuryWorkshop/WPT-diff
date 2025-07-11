@@ -11,7 +11,9 @@ WPT-diff is a test runner for [web-platform-tests](https://github.com/web-platfo
 5. Run `pnpm generate:validators` to generate type validations (optional)
 6. Run the CLI `pnpm start`
 
-## I want to get test results for my Web Proxy
+## FAQ
+
+### I want to get test results for my Web Proxy
 
 Use the action at [action.yml](./action.yml)
 You could also [see the Scramjet Workflow](https://github.com/MercuryWorkshop/scramjet/blob/main/.github/workflows/wpt_diff_epoch.yml) that uses this action for an example

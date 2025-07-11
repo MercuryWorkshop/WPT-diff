@@ -9,15 +9,13 @@ export interface TestOptions {
 	};
 	maxTests: number | "all";
 	underProxy: boolean;
-	scope: string;
+	scope?: string;
 	testPaths?: string[];
-	outputFailed: boolean | string;
-	report: boolean | string;
+	outputFailed?: string | boolean;
+	report?: string | boolean;
 	debug: boolean;
 	verbose: boolean;
 	silent: boolean;
-	checkpointFile?: string;
-	resumeFrom?: string;
 	shard?: number;
 	totalShards?: number;
 }

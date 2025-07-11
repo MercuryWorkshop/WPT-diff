@@ -1,30 +1,28 @@
 import { Command } from "commander";
 
-import TestRunner from "./index";
+import TestRunner from "./index.js";
 
 import log from "./logger";
 
 import type { ConfigPaths } from "#types/config.d.ts";
-import loadConfig from "./util/loadConfig";
+import loadConfig from "./util/loadConfig.js";
 
 const program = new Command();
-
-import { resolve } from "node:path";
 
 /**
  * The paths to the config files in the repo
  */
 const CONFIG_PATHS: ConfigPaths = {
-	main: resolve(import.meta.dirname, "../config.toml"),
-	example: resolve(import.meta.dirname, "../config.example.toml"),
+	main: `${import.meta.dirname}/../config.toml`,
+	example: `${import.meta.dirname}/../config.example.toml`,
 };
 
 program
 	.name("WPT-diff")
 	.description(
-		"A web-platform-tests runner meant for interception proxies to test against to ensure proper API interceptor compatibility.",
+		"WPT-diff is a test runner for WPT which features its own test harness",
 	)
-	.version("1.0.0");
+	.version("0.0.1");
 
 program.option(
 	"-o, --output-failed [file]",
@@ -36,17 +34,7 @@ program.option(
 	"generate a standardized test report in JSON format (to stdout if no file specified)",
 );
 
-program.option(
-	"-c, --checkpoint-file <file>",
-	"save test progress to checkpoint file for resuming later",
-);
-
-program.option("--resume-from <file>", "resume testing from a checkpoint file");
-
-program.option(
-	"--shard <index>",
-	"Current shard index (1-based) for test distribution",
-);
+program.option("--shard <index>", "Current shard index for test distribution");
 
 program.option(
 	"--total-shards <count>",
@@ -60,53 +48,52 @@ program.argument(
 
 program.parse();
 
-const programOptions = program.opts();
+async function main() {
+	const programOptions = program.opts();
 
-const configRes = await loadConfig(CONFIG_PATHS);
-if (configRes.isErr())
-	throw new Error(`Failed to load the TOML config: ${configRes.error}`);
-const config = configRes.value;
+	const configRes = await loadConfig(CONFIG_PATHS);
+	if (configRes.isErr())
+		throw new Error(`Failed to load the TOML config: ${configRes.error}`);
+	const config = configRes.value;
 
-const debugMode = config.debug.debug;
-const verboseMode = config.debug.verbose;
+	const debugMode = config.debug.debug;
+	const verboseMode = config.debug.verbose;
 
-// Set environment variables for logger if not already set
-if (!process.env.DEBUG) {
-	process.env.DEBUG = String(debugMode);
-}
-if (!process.env.VERBOSE) {
-	process.env.VERBOSE = String(verboseMode);
-}
-
-log.info(
-	`About to run the tests with debug mode ${debugMode ? "enabled" : "disabled"}`,
-);
-log.info(
-	`About to run the tests with verbose mode ${verboseMode ? "enabled" : "disabled"}`,
-);
-
-let testPaths: string[] | undefined;
-if (program.args.length > 0) {
-	testPaths = [];
-	for (const arg of program.args) {
-		if (arg.includes(",")) {
-			testPaths.push(...arg.split(",").map((p) => p.trim()));
-		} else {
-			testPaths.push(arg);
-		}
+	if (!process.env.DEBUG) {
+		process.env.DEBUG = String(debugMode);
 	}
-	testPaths = testPaths.map((path) => {
-		if (!path.startsWith("/")) {
-			return `/${path}`;
+	if (!process.env.VERBOSE) {
+		process.env.VERBOSE = String(verboseMode);
+	}
+
+	log.info(
+		`About to run the tests with debug mode ${debugMode ? "enabled" : "disabled"}`,
+	);
+	log.info(
+		`About to run the tests with verbose mode ${verboseMode ? "enabled" : "disabled"}`,
+	);
+
+	let paths: string[] | undefined;
+	if (program.args.length > 0) {
+		paths = [];
+		for (const arg of program.args) {
+			if (arg.includes(",")) {
+				paths.push(...arg.split(",").map((path) => path.trim()));
+			} else {
+				paths.push(arg);
+			}
 		}
-		return path;
-	});
+		paths = paths.map((path) => {
+			if (!path.startsWith("/")) {
+				return `/${path}`;
+			}
+			return path;
+		});
 
-	log.info(`Running specific tests: ${testPaths.join(", ")}`);
-}
+		log.info(`Running specific tests: ${paths.join(", ")}`);
+	}
 
-const testRunner = new TestRunner(
-	{
+	const testRunner = new TestRunner({
 		logger: log,
 		wptUrls: {
 			proxy: config.wpt.urls.proxy_base_url,
@@ -115,36 +102,39 @@ const testRunner = new TestRunner(
 		},
 		maxTests: config.wpt.max_tests,
 		underProxy: config.wpt.under_proxy,
-		scope: testPaths ? testPaths[0] : "",
-		testPaths: testPaths,
+		scope: paths ? paths[0] : "",
+		testPaths: paths,
 		outputFailed: programOptions.outputFailed,
 		report: programOptions.report,
 		debug: debugMode,
 		verbose: verboseMode,
 		silent: !verboseMode,
-		checkpointFile: programOptions.checkpointFile,
-		resumeFrom: programOptions.resumeFrom,
 		shard: programOptions.shard ? parseInt(programOptions.shard) : undefined,
 		totalShards: programOptions.totalShards
 			? parseInt(programOptions.totalShards)
 			: undefined,
-	},
-	config.ci?.checkpoint_interval,
-);
+	});
 
-const startTestRes = await testRunner.startTest();
-if (startTestRes.isErr())
-	throw new Error(`Failed to run WPT-diff: ${startTestRes.error}`);
+	const startTestRes = await testRunner.startTest();
+	if (startTestRes.isErr())
+		throw new Error(`Failed to run WPT-diff: ${startTestRes.error}`);
+	const testRes = startTestRes.value;
 
-const wptDiffRes = startTestRes.value;
+	if (!testRes || !("results" in testRes)) {
+		log.error("No results were returned from the WPT-diff run");
+	} else {
+		log.success(`Passed Subtests: ${testRes.results.pass}`);
+		log.error(`Failed Subtests: ${testRes.results.fail}`);
+		log.info(
+			`Total Subtests: ${testRes.results.pass}/${testRes.results.pass + testRes.results.fail}`,
+		);
+		log.debug(`Other Test results: ${testRes.results.other}`);
+	}
+}
 
-if (!wptDiffRes || !("results" in wptDiffRes)) {
-	log.error("No results were returned from the WPT-diff run");
-} else {
-	log.success(`Passed Subtests: ${wptDiffRes.results.pass}`);
-	log.error(`Failed Subtests: ${wptDiffRes.results.fail}`);
-	log.info(
-		`Total Subtests: ${wptDiffRes.results.pass}/${wptDiffRes.results.pass + wptDiffRes.results.fail}`,
-	);
-	log.debug(`Other Test results: ${wptDiffRes.results.other}`);
+if (import.meta.filename === process.argv[1]) {
+	main().catch((err) => {
+		console.error(err);
+		process.exit(1);
+	});
 }
