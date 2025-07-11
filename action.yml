@@ -35,13 +35,13 @@ runs:
   steps:
     - name: Setup pnpm
       uses: pnpm/action-setup@v4
-      if: ${{ inputs.run_js_setup }}
+      if: ${{ inputs.run_js_setup == 'true' }}
       with:
         version: latest
 
     - name: Setup Node.js with cache
       uses: actions/setup-node@v4
-      if: ${{ inputs.run_js_setup }}
+      if: ${{ inputs.run_js_setup == 'true' }}
       with:
         node-version: latest
         cache: pnpm
@@ -64,7 +64,7 @@ runs:
       run: pnpm combine-reports ../shard-results ../final-reports
 
     - name: Run regression check
-      if: ${{ inputs.github_token != '' && inputs.github_repository != '' }}
+      if: ${{ inputs.enable_regression_check == 'true' && inputs.github_token != '' && inputs.github_repository != '' }}
       shell: bash
       working-directory: ${{ inputs.location }}
       run: |
