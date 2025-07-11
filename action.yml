@@ -1,5 +1,5 @@
-name: "WPT-diff Test Runner"
-description: "Run Web Platform Tests against a web proxy with sharding support, standard WPT reports, failed test collection, and regression checking"
+name: "WPT-diff Report Combiner"
+description: "Combine WPT test report shards and perform regression checking against previous runs"
 author: "MercuryWorkshop"
 inputs:
   location:
@@ -13,42 +13,6 @@ inputs:
     description: "Report artifact name"
     required: false
     default: "wpt-report"
-  debug:
-    description: ""
-    required: false
-    default: false
-  verbose:
-    description: ""
-    required: false
-    default: false
-  wpt_max_tests:
-    description: "Maximum number of WPT tests to run"
-    required: false
-    default: "all"
-  under_proxy:
-    description: "Run tests under proxy"
-    required: false
-    default: true
-  proxy_base_url:
-    description: "Base URL for WPT tests"
-    required: false
-    default: "http://localhost:1337/"
-  wpt_tests_base_url:
-    description: "Base URL for WPT tests"
-    required: false
-    default: "http://web-platform.test:8000"
-  wpt_api_base_url:
-    description: "Base URL for WPT API"
-    required: false
-    default: "https://wpt.fyi"
-  shard_index:
-    description: "Current shard index for splitting tests"
-    required: false
-    default: "0"
-  total_shards:
-    description: "Total number of shards for splitting tests"
-    required: false
-    default: "1"
   enable_regression_check:
     description: "Whether to run regression check against previous workflow results"
     required: false
@@ -69,14 +33,6 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - name: Checkout WPT
-      uses: actions/checkout@v4
-      with:
-        repository: web-platform-tests/wpt
-        path: ${{ inputs.location }}/wpt
-        ref: main
-        fetch-depth: 1
-
     - name: Setup pnpm
       uses: pnpm/action-setup@v4
       if: ${{ inputs.run_js_setup }}
@@ -96,7 +52,6 @@ runs:
       working-directory: ${{ inputs.location }}
       run: pnpm install
 
-    # Combine and regression check
     - name: Download shard results
       uses: actions/download-artifact@v4
       with:
